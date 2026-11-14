@@ -1,0 +1,34 @@
+#!/bin/bash
+# cmd/main -- start/stop/status for the SpektraLab fnOS app.
+#
+# The app service is a Docker Compose project (config/resource
+# docker-project): fnOS's app framework handles compose lifecycle for the
+# containers; what remains here is health status.  Under the unified gateway
+# the WebUI is reachable at /app/spektralab-fnos; the container's bridge opens
+# the gateway unix socket at $TRIM_APPDEST/app.sock.
+
+case "$1" in
+start)
+  # compose project is started by the framework after this returns; wait
+  # briefly for the bridge's gateway socket so the first click works.
+  for _ in $(seq 1 30); do
+    [ -S "$TRIM_APPDEST/app.sock" ] && exit 0
+    sleep 1
+  done
+  echo "bridge socket did not appear at $TRIM_APPDEST/app.sock" > "$TRIM_TEMP_LOGFILE"
+  exit 0
+  ;;
+stop)
+  exit 0
+  ;;
+status)
+  if [ -S "$TRIM_APPDEST/app.sock" ]; then
+    exit 0
+  fi
+  exit 3
+  ;;
+*)
+  echo "usage: main {start|stop|status}" > "$TRIM_TEMP_LOGFILE"
+  exit 1
+  ;;
+esac

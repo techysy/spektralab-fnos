@@ -1,6 +1,14 @@
-# Build the fnOS deliverable on a hosted runner: debian:12 container build,
-# lavapipe CTest + host smoke, glibc gate, runtime image, dist artifacts.
-# Tag pushes (v*) additionally attach the artifacts to a GitHub Release.
+# Build the fnOS deliverables on a hosted runner:
+#   build.sh              -> engine host (debian:12, lavapipe CTest, glibc gate) + headless image
+#   webui/build-webui.sh  -> frontend (upstream desktop + overlay) + WebUI image + bridge smoke
+#   webui/pack-fpk.sh     -> fpk project staging (image tar inside; fnpack when present)
+# Tag pushes (v*) attach everything to a GitHub Release.
+#
+# Upstream updates stay a one-line change: bump UPSTREAM_PIN, push, and this
+# workflow rebuilds both deliverables through the same verified gates.  The
+# fpk *packing* (fnpack -> .fpk) runs on a machine that has fnpack (the fnOS
+# packer is not distributed for hosted runners); pack-fpk.sh stages the exact
+# layout so packing is a single `fnpack build` -- manual, but one command.
 name: fnOS image
 
 on:
@@ -20,16 +28,22 @@ permissions:
 
 jobs:
   build:
-    name: Build + verify + package
+    name: Engine + WebUI + fpk stage
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
       # Runner disk is fast; no dep seed needed (the container fetches and
       # verifies LibRaw itself, with a pinned git clone fallback).
-      - name: Build, verify, package
+      - name: Build engine host, verify, package headless image
         run: bash build.sh
+
+      - name: Build WebUI (frontend + bridge image + smoke)
+        run: bash webui/build-webui.sh
+
+      - name: Stage the fpk project
+        run: bash webui/pack-fpk.sh || true   # fnpack absent on runners: staging only
 
       - uses: actions/upload-artifact@v4
         with:
@@ -37,7 +51,15 @@ jobs:
           path: |
             dist/spektralab-fnos-*.tar.gz
             dist/SHA256SUMS
+            dist/SHA256SUMS.webui
           if-no-files-found: error
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spektralab-fnos-fpk-project
+          path: webui/fpk-dist/
+          if-no-files-found: warn
           retention-days: 30
 
       - name: Attach to the tag's release (tag pushes only)
@@ -48,5 +70,6 @@ jobs:
         run: |
           tag="$GITHUB_REF_NAME"
           gh release view "$tag" 2>/dev/null || gh release create "$tag" --title "$tag" --generate-notes
-          gh release upload "$tag" dist/spektralab-fnos-*.tar.gz dist/SHA256SUMS --clobber
+          gh release upload "$tag" dist/spektralab-fnos-*.tar.gz dist/SHA256SUMS* --clobber
           echo "attached to release $tag"
+          echo "fpk packing: download the fpk-project artifact, then 'fnpack build' inside spektralab-fnos/"

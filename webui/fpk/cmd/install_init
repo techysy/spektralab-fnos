@@ -1,0 +1,4 @@
+#!/bin/bash
+# install_init -- before the app files land. Nothing to pre-check: the image
+# tar is loaded by install_callback (fnOS's docker-project does the compose up).
+exit 0

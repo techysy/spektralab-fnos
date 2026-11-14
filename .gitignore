@@ -3,3 +3,8 @@ build/
 dist/
 *.partial
 __pycache__/
+webui/frontend/app/
+webui/frontend/dist/
+webui/fpk/dist/
+webui/bridge/www/
+webui/fpk-dist/

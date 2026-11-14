@@ -1,0 +1,5 @@
+#!/bin/bash
+# uninstall_callback -- after removal: the framework tore the compose project
+# down. Optionally remove the engine image (keep it: reinstalls are common and
+# the tar load takes a minute; images are not user data).
+exit 0

@@ -1,0 +1,38 @@
+# WebUI image: engine host + lavapipe/ANV (from the same base as the headless
+# deliverable) + the bridge + the frontend bundle.  One image serves both the
+# standalone docker deployment and the fnOS app (compose under the fpk).
+#
+# Build (repo root, after build.sh and webui/frontend/build-webui.sh ran):
+#   docker build -t spektralab-fnos:<tag> -f webui/docker/Dockerfile.webui \
+#     --build-context engine=upstream/build/host-linux-x64 \
+#     --build-context webui=webui \
+#     .
+# The heavy base layers are shared with the plain engine image (same first
+# stage), so a NAS storing both images stores the runtime once.
+
+FROM debian:12
+
+RUN echo 'deb https://mirrors.ustc.edu.cn/debian bookworm main' > /etc/apt/sources.list \
+ && echo 'deb https://mirrors.ustc.edu.cn/debian bookworm-updates main' >> /etc/apt/sources.list \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends \
+        libvulkan1 mesa-vulkan-drivers python3 ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# engine host + baked resources (same staged bundle the headless image copies)
+COPY --from=engine / /opt/spektralab/
+
+# bridge + frontend
+COPY --from=webui /bridge /opt/bridge
+COPY --from=webui /frontend/dist /opt/bridge/www
+
+ENV SPEKTRALAB_HOST_BIN=/opt/spektralab/spektralab-host \
+    SPEKTRALAB_RESOURCES=/opt/spektralab/engine \
+    SPEKTRALAB_WWW=/opt/bridge/www \
+    SPEKTRALAB_FNOS_DATA=/data \
+    SPEKTRALAB_FNOS_PORT=8080 \
+    PATH="/opt/spektralab:/opt/bridge:${PATH}"
+
+EXPOSE 8080
+WORKDIR /opt/bridge
+CMD ["python3", "bridge.py"]

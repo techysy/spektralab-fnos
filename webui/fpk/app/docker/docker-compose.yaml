@@ -1,0 +1,53 @@
+# SpektraLab fnOS app -- engine host + bridge, one container.
+#
+# The fnOS app framework starts this compose project (config/resource
+# docker-project).  The bridge serves the WebUI over the unified gateway
+# unix socket (app.sock under the app's target dir, bind-mounted here) and,
+# when SPEKTRALAB_FNOS_PORT is set, directly on a port too.
+#
+# GPU: the iGPU is passed through with /dev/dri (render nodes); the
+# container's mesa-vulkan-drivers (ANV) picks it up and the engine renders on
+# it.  On a GPU-less box the same image falls back to Mesa lavapipe (CPU).
+# The app user already runs in the video/render groups (config/privilege).
+
+services:
+  spektralab:
+    image: spektralab-fnos:${SPEKTRALAB_VERSION:-0.2.0}
+    container_name: spektralab-fnos
+    restart: unless-stopped
+    devices:
+      - /dev/dri:/dev/dri          # iGPU passthrough (Intel UHD 730 et al.)
+    group_add:
+      - video
+      - render
+    environment:
+      # unified gateway socket, inside the app target dir bind mount
+      SPEKTRALAB_FNOS_SOCKET: /sock/app.sock
+      # direct port is OFF under fnOS (the gateway fronts everything);
+      # set SPEKTRALAB_FNOS_PORT in .env for a standalone/docker deploy
+      SPEKTRALAB_FNOS_PORT: ${SPEKTRALAB_FNOS_PORT:-0}
+      # authorized photo roots for standalone mode (fnOS app mode gets these
+      # from the trim API: shared grants + the user's own authorized folders)
+      SPEKTRALAB_PHOTOS_ROOTS: ${SPEKTRALAB_PHOTOS_ROOTS:-/photos}
+      # 0 = let the engine pick the first Vulkan device (the iGPU when passed
+      # through, lavapipe otherwise); set 0/1... to pin a specific one
+      SPEKTRALAB_DEVICE: ${SPEKTRALAB_DEVICE:-}
+      TRIM_API_TOKEN: ${TRIM_API_TOKEN:-}
+      TRIM_APPNAME: ${TRIM_APPNAME:-spektralab-fnos}
+      TRIM_UID: ${TRIM_UID:-}
+      SPEKTRALAB_FNOS_VERSION: ${SPEKTRALAB_VERSION:-0.2.0}
+    volumes:
+      # the gateway socket the fnOS app framework forwards /app/spektralab-fnos to
+      - ${TRIM_APPDEST:-.}/app.sock:/sock/app.sock
+      # engine data: sidecar-less stores, inbox uploads, host logs
+      - ${TRIM_PKGVAR:-./data}:/data
+      # authorized photo roots in standalone mode; under fnOS the trim ACL
+      # governs real user paths, so mount what you grant
+      - ${SPEKTRALAB_PHOTOS_DIR:-./photos}:/photos
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8080/api/hello', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      # the healthcheck hits the TCP listener; keep one alive even under fnOS
+      # (bridge.py opens both when the port is set)

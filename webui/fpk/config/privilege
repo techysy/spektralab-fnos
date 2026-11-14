@@ -1,0 +1,8 @@
+{
+  "defaults": {
+    "run-as": "package"
+  },
+  "username": "spektralab",
+  "groupname": "spektralab",
+  "join-groups": ["video", "render"]
+}

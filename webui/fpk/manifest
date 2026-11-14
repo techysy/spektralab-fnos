@@ -1,0 +1,16 @@
+appname=spektralab-fnos
+version=0.2.0
+display_name=SpektraLab
+desc=胶片暗房引擎：按物理过程建模的胶片模拟与放大印相。打开 RAW 照片，选择胶片与相纸，调参后导出 TIFF/JPEG。基于 SpektraLab 引擎（GPL-3.0）。
+maintainer=techysy
+maintainer_url=https://github.com/techysy/spektralab-fnos
+source=thirdparty
+platform=x86
+os_min_version=1.2.0401
+ctl_stop=true
+service_port=8777
+checkport=false
+disable_authorization_path=false
+desktop_uidir=ui
+desktop_applaunchname=spektralab-fnos.main
+changelog=首个 WebUI 版本：统一网关接入、授权目录照片浏览、核显透传加速。

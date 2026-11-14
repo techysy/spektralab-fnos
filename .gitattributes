@@ -1,8 +1,22 @@
 *.sh text eol=lf
 Dockerfile text eol=lf
 *.yml text eol=lf
+*.yaml text eol=lf
 *.py text eol=lf
 *.md text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.json text eol=lf
+*.cgi text eol=lf
+# fpk lifecycle scripts and config have no extension and must stay executable sh
+webui/fpk/cmd/* text eol=lf
+webui/fpk/manifest text eol=lf
+webui/fpk/app/ui/config text eol=lf
+webui/fpk/config/privilege text eol=lf
+webui/fpk/config/resource text eol=lf
 UPSTREAM_PIN text eol=lf
 VERSION text eol=lf
 deps-seed/*.zip binary
+*.png binary
+*.tif binary
+*.tar.gz binary
