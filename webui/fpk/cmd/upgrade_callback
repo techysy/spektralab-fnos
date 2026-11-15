@@ -1,29 +1,7 @@
 #!/bin/bash
-# upgrade_callback -- after upgrade: same contract as install_callback -- the
-# stable tag spektralab-fnos:webui must resolve, from the freshly shipped tar.
+# upgrade_callback -- after upgrade: same as install (exec bits + runtime).
 set -e
-DOCKER="$(command -v docker || echo /usr/bin/docker)"
-IMG_TAR="$TRIM_APPDEST/docker/spektralab-fnos.tar.gz"
-IMG_REF="spektralab-fnos:webui"
-
-image_present() {
-  "$DOCKER" image inspect "$1" > /dev/null 2>&1
-}
-
-# an upgrade ships a new tar: reload it even if the old tag exists, so the
-# stable reference points at the NEW engine build.
-if [ -f "$IMG_TAR" ]; then
-  LOADED="$("$DOCKER" load -i "$IMG_TAR" 2>&1 | grep -oE 'spektralab-fnos:[^ ]+' | head -1 || true)"
-  if [ -n "$LOADED" ] && image_present "$LOADED"; then
-    "$DOCKER" tag "$LOADED" "$IMG_REF"
-    echo "tagged $LOADED -> $IMG_REF"
-    exit 0
-  fi
-  if image_present "$IMG_REF"; then
-    echo "load failed but $IMG_REF already present; continuing"
-    exit 0
-  fi
-  echo "docker load failed and $IMG_REF is not present" > "${TRIM_TEMP_LOGFILE:-/dev/null}"
-  exit 1
-fi
+APP_NAME="${TRIM_APPNAME:-spektralab}"
+APP_DIR="${TRIM_APPDEST:-/var/apps/${APP_NAME}}"
+chmod +x "$APP_DIR/spektralab-host" 2>/dev/null || true
 exit 0

@@ -10,10 +10,11 @@
 
 ## 它是什么 / What it is
 
+- **原生 fnOS 应用**（fpk）：引擎宿主、桥接、前端全部以包用户身份**原生运行**——无 Docker；GPU 走包用户的 `video`/`render` 组直通 `/dev/dri`
 - **引擎宿主**：`spektralab-host`，无界面，stdio 二进制帧 JSON-RPC（[HOST-PROTOCOL](https://github.com/JamesQiu2005/SpektraLab/blob/main/desktop/HOST-PROTOCOL.md)，24 个方法：open / render / set_params / export 等）
 - **桥接服务**：`webui/bridge/bridge.py`（纯标准库 Python）——托管宿主进程，HTTP 透传协议帧 + SSE 进度事件 + 文件 API
 - **WebUI**：复用上游 React 界面（overlay 注入桥接传输层），完整编辑器：胶片/相纸选择、曝光与滤镜包、Curve、导出 TIFF16/JPEG/PNG/.cube
-- **fnOS app**：fpk 打包，App Center 安装，桌面图标直开
+- **fnOS 开放 API**：统一网关 `/app/spektralab`（NAS 登录态 + 用户 Header）+ trim 文件授权/ACL/路径转换
 
 ## 快速开始 / Quick Start
 

@@ -287,10 +287,14 @@ HOST = None  # set in main()
 # ----------------------------------------------------------------- path policy
 
 def user_uid(handler):
+    """Request user identity: the gateway's X-Trim-Userid, else the app user
+    (TRIM_UID, injected by the framework) for direct-port LAN requests."""
     v = handler.headers.get('X-Trim-Userid')
     if v and v.isdigit():
         return int(v)
-    return int(FALLBACK_UID) if FALLBACK_UID.isdigit() else None
+    if FALLBACK_UID.isdigit():
+        return int(FALLBACK_UID)
+    return None
 
 
 def is_admin(handler):
@@ -340,12 +344,13 @@ def check_photo_path(handler, raw, need='read'):
         raise ApiError(403, 'path is outside the authorized roots')
     if trim is not None and not is_admin(handler):
         uid = user_uid(handler)
-        if uid is None:
-            raise ApiError(403, 'no user context')
-        acl = trim.check_user_acl(uid, rp)
-        key = {'read': 'readable', 'write': 'writable'}[need]
-        if not acl.get(key):
-            raise ApiError(403, f'path is not {key} for this user')
+        if uid is not None:
+            key = {'read': 'readable', 'write': 'writable'}[need]
+            acl = trim.check_user_acl(uid, rp)
+            if not acl.get(key):
+                raise ApiError(403, f'path is not {key} for this user')
+        # uid None: direct-port LAN request without gateway identity -- the
+        # trusted-LAN access model; per-user ACL applies only via the gateway.
     return rp
 
 

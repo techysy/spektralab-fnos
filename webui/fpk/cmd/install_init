@@ -1,20 +1,5 @@
 #!/bin/bash
-# install_init -- runs BEFORE the framework applies files / starts the compose
-# project.  The fpk has already been extracted to a temp dir at this point, so
-# load the bundled engine image now: the framework's compose up (pull_policy
-# never) needs it to exist locally before install_callback ever runs.
-set -e
-DOCKER="$(command -v docker || echo /usr/bin/docker)"
-IMG_REF="spektralab-fnos:webui"
-
-"$DOCKER" image inspect "$IMG_REF" > /dev/null 2>&1 && exit 0
-
-TAR="$(find "${TRIM_PKGINST_TEMP_DIR:-/nonexistent}" "${TRIM_TEMP_TPKFILE:-/nonexistent}"   -type f -name spektralab-fnos.tar.gz 2>/dev/null | head -1 || true)"
-if [ -n "$TAR" ]; then
-  echo "pre-loading engine image from $TAR"
-  LOADED="$("$DOCKER" load -i "$TAR" 2>&1 | grep -oE 'spektralab-fnos:[^ ]+' | head -1 || true)"
-  if [ -n "$LOADED" ]; then
-    "$DOCKER" tag "$LOADED" "$IMG_REF" || true
-  fi
-fi
+# install_init -- runs before the framework applies files.  Nothing to
+# pre-load natively: the engine runs from the applied files with fnOS's own
+# Vulkan stack (mesa-vulkan-drivers ships with the system).
 exit 0

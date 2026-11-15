@@ -1,5 +1,4 @@
 #!/bin/bash
-# uninstall_init -- before removal. User data (exports, sidecars, stores) lives
-# in the app data dir and the authorized photo folders; the uninstall wizard
-# asks whether to keep it.  We never touch photo directories here.
+# uninstall_init -- before removal.  User data (exports, stores, uploads)
+# lives in the app var dir; the uninstall wizard decides retention.
 exit 0

@@ -1,45 +1,76 @@
 #!/bin/bash
-# cmd/main -- start/stop/status for the SpektraLab fnOS app.
+# cmd/main -- start/stop/status for the NATIVE SpektraLab fnOS app.
 #
-# The service runs as a Docker Compose project (config/resource
-# docker-project).  On this fnOS build the framework does not re-run compose
-# at start, so start ensures the project is up itself (idempotent: compose
-# recreates only when the file changed) and waits for the bridge's port.
-# The WebUI opens at http://<nas>:8777 (manifest service_port, type: url
-# fallback entry; the primary entry is the unified-gateway iframe).
+# No Docker: the engine host (spektralab-host) and the bridge (bridge.py,
+# python3 stdlib) run as native processes under the package user.  The
+# bridge listens on the manifest's service port, serves the WebUI, and
+# creates the unified-gateway socket at ${APP_DIR}/app.sock -- the iframe
+# entry /app/spektralab fronts everything with the NAS login state.
+#
+# GPU: the package user is in video/render (config/privilege); fnOS ships
+# mesa-vulkan-drivers, so the engine renders on the iGPU (Intel UHD 730
+# verified) and falls back to lavapipe when no device is exposed.
 
-DOCKER="$(command -v docker || echo /usr/bin/docker)"
-APP_NAME="${TRIM_APPNAME:-spektralab-fnos}"
+APP_NAME="${TRIM_APPNAME:-spektralab}"
 APP_DIR="${TRIM_APPDEST:-/var/apps/${APP_NAME}}"
-COMPOSE_FILE="${APP_DIR}/docker/docker-compose.yaml"
+DATA_DIR="${TRIM_PKGVAR:-${APP_DIR}/var}"
 PORT="${TRIM_SERVICE_PORT:-8777}"
+PY=python3
 
-container_state() {
-  "$DOCKER" inspect -f '{{.State.Status}}' "$APP_NAME" 2>/dev/null || echo "missing"
+HOST_BIN="${APP_DIR}/spektralab-host"
+RESOURCES="${APP_DIR}/engine"
+WWW="${APP_DIR}/www"
+BRIDGE="${APP_DIR}/bridge.py"
+LOG="${DATA_DIR}/spektralab.log"
+PID_FILE="${DATA_DIR}/spektralab.pid"
+
+export SPEKTRALAB_HOST_BIN="$HOST_BIN" \
+       SPEKTRALAB_RESOURCES="$RESOURCES" \
+       SPEKTRALAB_WWW="$WWW" \
+       SPEKTRALAB_FNOS_DATA="$DATA_DIR" \
+       SPEKTRALAB_FNOS_PORT="$PORT" \
+       SPEKTRALAB_FNOS_SOCKET="${APP_DIR}/app.sock" \
+       SPEKTRALAB_GATEWAY_PREFIX="/app/${APP_NAME%-fnos}" \
+       SPEKTRALAB_DEVICE="${SPEKTRALAB_DEVICE:-}"
+
+pid_alive() {
+  [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null
+}
+
+hello_ok() {
+  curl -sf --max-time 2 "http://127.0.0.1:${PORT}/api/hello" > /dev/null 2>&1
 }
 
 case "$1" in
 start)
-  if [ -f "$COMPOSE_FILE" ]; then
-    "$DOCKER" compose -f "$COMPOSE_FILE" up -d 2>>"${TRIM_TEMP_LOGFILE:-/dev/null}" || true
+  if pid_alive && hello_ok; then
+    exit 0
   fi
+  rm -f "$PID_FILE" "$APP_DIR/app.sock"
+  mkdir -p "$DATA_DIR"
+  nohup "$PY" "$BRIDGE" >> "$LOG" 2>&1 &
+  echo $! > "$PID_FILE"
   for _ in $(seq 1 30); do
-    if curl -sf --max-time 2 "http://127.0.0.1:${PORT}/api/hello" > /dev/null 2>&1; then
+    if hello_ok; then
       exit 0
     fi
     sleep 1
   done
-  echo "bridge did not answer on port ${PORT} within 30s" > "${TRIM_TEMP_LOGFILE:-/dev/null}"
+  echo "bridge did not answer on port ${PORT} within 30s; see ${LOG}" > "${TRIM_TEMP_LOGFILE:-/dev/null}"
   exit 0
   ;;
 stop)
-  # the framework stops the compose project itself; this is a belt-and-suspenders
-  # down so nothing leaks across uninstall/reinstall cycles
-  "$DOCKER" compose -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
+  if pid_alive; then
+    kill "$(cat "$PID_FILE")" 2>/dev/null || true
+  fi
+  # the bridge is the parent of spektralab-host; if the bridge died hard,
+  # reap the host by its exact resources path
+  pkill -f "spektralab-host --resources ${RESOURCES}" 2>/dev/null || true
+  rm -f "$PID_FILE"
   exit 0
   ;;
 status)
-  if [ "$(container_state)" = "running" ] && curl -sf --max-time 2 "http://127.0.0.1:${PORT}/api/hello" > /dev/null 2>&1; then
+  if pid_alive && hello_ok; then
     exit 0
   fi
   exit 3

@@ -1,5 +1,5 @@
 #!/bin/bash
-# config_callback -- after a config change: authorization paths may have moved
-# (the app settings page's grant list). The bridge re-queries the trim API on
-# every request, so no restart is needed.
+# config_callback -- after a config change: authorization paths may have
+# moved (app settings grants).  The bridge re-queries the trim API per
+# request, so no restart is needed.
 exit 0

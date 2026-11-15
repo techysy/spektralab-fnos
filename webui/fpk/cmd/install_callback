@@ -1,33 +1,19 @@
 #!/bin/bash
-# install_callback -- after install: make the compose's image reference
-# (spektralab-fnos:webui, a stable local tag decoupled from app versions)
-# resolve from the bundled tar.  The framework brings the compose project up
-# itself at install; cmd/main start also runs `compose up -d` as a safety
-# net.  No compose calls here: a second compose racer just conflicts on the
-# container name and rolls the whole install back.
+# install_callback -- after install: make the payload executable and confirm
+# the runtime.  fnpack handles cmd/ exec bits; files under app/ land with the
+# archive's modes, so the host binary gets its +x here.
 set -e
-DOCKER="$(command -v docker || echo /usr/bin/docker)"
-IMG_TAR="$TRIM_APPDEST/docker/spektralab-fnos.tar.gz"
-IMG_REF="spektralab-fnos:webui"
+APP_NAME="${TRIM_APPNAME:-spektralab}"
+APP_DIR="${TRIM_APPDEST:-/var/apps/${APP_NAME}}"
 
-image_present() {
-  "$DOCKER" image inspect "$1" > /dev/null 2>&1
-}
+chmod +x "$APP_DIR/spektralab-host" 2>/dev/null || true
 
-if [ -f "$IMG_TAR" ]; then
-  # ALWAYS load on install: the bundled tar is the image this fpk was built
-  # with, and the stable tag may still point at an older build left behind by
-  # a previous install.
-  echo "loading engine image from $IMG_TAR"
-  LOADED="$("$DOCKER" load -i "$IMG_TAR" 2>&1 | grep -oE 'spektralab-fnos:[^ ]+' | head -1 || true)"
-  if [ -z "$LOADED" ] || ! image_present "$LOADED"; then
-    echo "docker load did not yield a usable image" > "${TRIM_TEMP_LOGFILE:-/dev/null}"
-    exit 1
-  fi
-  "$DOCKER" tag "$LOADED" "$IMG_REF"
-  echo "tagged $LOADED -> $IMG_REF"
-else
-  echo "$IMG_TAR missing; expecting $IMG_REF to already exist locally" > "${TRIM_TEMP_LOGFILE:-/dev/null}"
-  image_present "$IMG_REF" || exit 1
+if ! command -v python3 > /dev/null 2>&1; then
+  echo "python3 not found on the system" > "${TRIM_TEMP_LOGFILE:-/dev/null}"
+  exit 1
+fi
+if [ ! -f "$APP_DIR/spektralab-host" ]; then
+  echo "engine host binary missing from the package" > "${TRIM_TEMP_LOGFILE:-/dev/null}"
+  exit 1
 fi
 exit 0

@@ -9,10 +9,5 @@
     "shares": [
       { "name": "spektralab/exports" }
     ]
-  },
-  "docker-project": {
-    "projects": [
-      { "name": "spektralab", "path": "docker" }
-    ]
   }
 }

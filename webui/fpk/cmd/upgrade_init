@@ -1,5 +1,4 @@
 #!/bin/bash
-# upgrade_init -- before the new files land. The compose project may be
-# restarted by the framework around this; nothing to migrate (stores/sidecars
-# are versioned JSON in the app data dir).
+# upgrade_init -- before the new files land.  Stores/sidecars are versioned
+# JSON in the app var dir; nothing to migrate.
 exit 0

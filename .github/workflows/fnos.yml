@@ -53,6 +53,16 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      # the native fpk payload: engine bundle + built frontend
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spektralab-fnos-payload
+          path: |
+            upstream/build/host-linux-x64/
+            webui/frontend/dist/
+          if-no-files-found: error
+          retention-days: 30
+
   fpk:
     name: fpk (${{ matrix.variant }})
     needs: build
@@ -64,11 +74,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download the WebUI image tar
+      - name: Download the payload (engine bundle + frontend)
         uses: actions/download-artifact@v4
         with:
-          name: spektralab-fnos-images
-          path: dist/
+          name: spektralab-fnos-payload
+          path: payload/
+
+      - name: Stage the fpk project for this variant
+        env:
+          FPK_VARIANT: ${{ matrix.variant }}
+          SPEKTRALAB_HOST_BUNDLE: ${{ github.workspace }}/payload/upstream/build/host-linux-x64
+          SPEKTRALAB_WWW_DIST: ${{ github.workspace }}/payload/webui/frontend/dist
+        run: bash webui/pack-fpk.sh
 
       - name: Stage the fpk project for this variant
         env:

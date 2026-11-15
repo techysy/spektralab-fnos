@@ -4,5 +4,5 @@
   },
   "username": "spektralab",
   "groupname": "spektralab",
-  "join-groups": ["video", "render", "docker"]
+  "join-groups": ["video", "render"]
 }
