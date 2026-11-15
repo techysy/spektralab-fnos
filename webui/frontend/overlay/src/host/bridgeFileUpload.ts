@@ -13,12 +13,17 @@ export interface UploadResult {
   size: number;
 }
 
+declare global {
+  interface Window { __SPK_BASE__?: string }
+}
+const api = (p: string) => `${window.__SPK_BASE__ ?? '/'}${p}`;
+
 const CHUNK = 4 * 1024 * 1024;
 
 // (the inbox endpoints live in bridge.py; see its header comment)
 
 export async function uploadToInbox(file: File, onProgress?: (frac: number) => void): Promise<UploadResult> {
-  const init = await fetch('/api/fs/upload/init', {
+  const init = await fetch(api('api/fs/upload/init'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: file.name, size: file.size }),
@@ -31,7 +36,7 @@ export async function uploadToInbox(file: File, onProgress?: (frac: number) => v
   while (offset < file.size || file.size === 0) {
     const slice = file.slice(offset, Math.min(offset + CHUNK, file.size));
     const buf = new Uint8Array(await slice.arrayBuffer());
-    const r = await fetch(`/api/fs/upload/chunk?id=${encodeURIComponent(upload_id)}&offset=${offset}`, {
+    const r = await fetch(api(`api/fs/upload/chunk?id=${encodeURIComponent(upload_id)}&offset=${offset}`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/octet-stream' },
       body: buf,
@@ -41,7 +46,7 @@ export async function uploadToInbox(file: File, onProgress?: (frac: number) => v
     onProgress?.(file.size ? offset / file.size : 1);
     if (file.size === 0) break;
   }
-  const done = await fetch('/api/fs/upload/finish', {
+  const done = await fetch(api('api/fs/upload/finish'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id: upload_id }),

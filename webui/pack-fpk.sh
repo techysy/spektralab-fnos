@@ -17,6 +17,21 @@ dist="$root/dist"
 rm -rf "$here/fpk-dist"
 mkdir -p "$stage"
 cp -r "$here/fpk/." "$stage/"
+# Desktop-entry variant: window (fnOS unified-gateway iframe, the default
+# config) or tab (browser new tab over the service port).  Two fpk files ship
+# per release; same appname and data dir, install one over the other to
+# switch.  FPK_VARIANT=tab selects the tab entry.
+variant="${FPK_VARIANT:-window}"
+case "$variant" in
+  tab)
+    cp "$here/fpk/app/ui/config.tab" "$stage/app/ui/config"
+    sed -i 's/^desc=/desc=【标签页版】/' "$stage/manifest"
+    ;;
+  window)
+    sed -i 's/^desc=/desc=【窗口版】/' "$stage/manifest"
+    ;;
+  *) echo "unknown FPK_VARIANT '$variant'" >&2; exit 1 ;;
+esac
 # wizard/install must be a NON-EMPTY JSON form file: the app center's wizard
 # parser nil-derefs on an empty array (code 10111). webui/fpk/wizard/install
 # carries one tips step; keep it as-is here, never overwrite it.

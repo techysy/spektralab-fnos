@@ -1,22 +1,31 @@
 // bridgePlatform.ts -- the Platform surface (platform/index.ts) when the app
 // runs behind the spektralab-fnos bridge: NAS directories replace the Tauri
-// file dialogs (a built-in picker over /api/fs), exports land beside the
-// originals or under a picked root, sidecars/stores go through the bridge.
+// file dialogs (a built-in picker over the bridge's fs API), exports land
+// beside the originals or under a picked root, sidecars/stores go through
+// the bridge.  All URLs are built on the page base (the app may live under a
+// sub-path behind the fnOS unified gateway).
 
 import { baseName, type AppPaths, type FileEntry, type Platform } from './index';
 import { uploadToInbox } from '../host/bridgeFileUpload';
 
+declare global {
+  interface Window { __SPK_BASE__?: string }
+}
+const base = () => window.__SPK_BASE__ ?? '/';
+const url = (p: string) => `${base()}${p}`;
+
 type DirListing = { ok: boolean; path: string; dirs: { path: string; name: string }[]; images: FileEntry[] };
 
-async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(url, init);
+async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const r = await fetch(url(path), init);
   const j = (await r.json()) as { ok: boolean; error?: { message?: string } } & T;
-  if (!r.ok || !j.ok) throw new Error(j.error?.message ?? `${url} failed (${r.status})`);
+  if (!r.ok || !j.ok) throw new Error(j.error?.message ?? `${path} failed (${r.status})`);
   return j;
 }
 
-// -- the in-app folder picker: a small browser dialog over /api/fs. The DOM is
-//    built imperatively; the host page's stylesheet does not know these classes.
+// -- the in-app folder picker: a small browser dialog over the bridge fs API.
+//    The DOM is built imperatively; the host page's stylesheet does not know
+//    these classes.
 
 const IMG_EXT = /\.(3fr|ari|arw|bay|cr2|cr3|crw|dcr|dng|erf|fff|iiq|k25|kdc|mef|mos|mrw|nef|nrw|orf|pef|raf|raw|rwl|sr2|srf|srw|x3f|tiff?|jpe?g|png)$/i;
 
@@ -24,7 +33,7 @@ export function bridgePlatform(): Platform {
   return {
     kind: 'bridge',
     listImages: async (dir) => {
-      const j = await api<DirListing>(`/api/fs/list?path=${encodeURIComponent(dir)}`);
+      const j = await api<DirListing>(`fs/list?path=${encodeURIComponent(dir)}`);
       return j.images;
     },
     expandPaths: async (paths) => {
@@ -33,18 +42,18 @@ export function bridgePlatform(): Platform {
         if (IMG_EXT.test(p)) {
           out.push({ path: p, name: baseName(p), size: 0, mtime_ms: 0 });
         } else {
-          const j = await api<DirListing>(`/api/fs/list?path=${encodeURIComponent(p)}`);
+          const j = await api<DirListing>(`fs/list?path=${encodeURIComponent(p)}`);
           out.push(...j.images);
         }
       }
       return out;
     },
     sidecarLoad: async (image) => {
-      const j = await api<{ sidecar: unknown | null }>(`/api/fs/sidecar?path=${encodeURIComponent(image)}`);
+      const j = await api<{ sidecar: unknown | null }>(`fs/sidecar?path=${encodeURIComponent(image)}`);
       return j.sidecar;
     },
     sidecarSave: async (image, sidecar) => {
-      const j = await api<{ sidecar_path: string }>('/api/fs/sidecar', {
+      const j = await api<{ sidecar_path: string }>('fs/sidecar', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: image, sidecar }),
@@ -52,15 +61,15 @@ export function bridgePlatform(): Platform {
       return j.sidecar_path;
     },
     sidecarPath: async (image) => {
-      const j = await api<{ sidecar_path: string }>(`/api/fs/sidecar?path=${encodeURIComponent(image)}`);
+      const j = await api<{ sidecar_path: string }>(`fs/sidecar?path=${encodeURIComponent(image)}`);
       return j.sidecar_path;
     },
     storeRead: async (area, name) => {
-      const j = await api<{ value: unknown | null }>(`/api/store/${encodeURIComponent(area)}/${encodeURIComponent(name)}`);
+      const j = await api<{ value: unknown | null }>(`store/${encodeURIComponent(area)}/${encodeURIComponent(name)}`);
       return j.value;
     },
     storeWrite: async (area, name, value) => {
-      await api(`/api/store/${encodeURIComponent(area)}/${encodeURIComponent(name)}`, {
+      await api(`store/${encodeURIComponent(area)}/${encodeURIComponent(name)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(value),
@@ -71,18 +80,18 @@ export function bridgePlatform(): Platform {
       return q ? [q] : [];
     },
     pathExists: async (path) => {
-      const j = await api<{ exists: boolean }>(`/api/fs/exists?path=${encodeURIComponent(path)}`);
+      const j = await api<{ exists: boolean }>(`fs/exists?path=${encodeURIComponent(path)}`);
       return j.exists;
     },
     ensureDir: async (path) => {
-      await api('/api/fs/mkdir', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) });
+      await api('fs/mkdir', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) });
     },
     appPaths: async (): Promise<AppPaths> => {
-      const j = await api<{ mode: string; data_dir: string; version: string }>('/api/appinfo');
+      const j = await api<{ mode: string; data_dir: string; version: string }>('appinfo');
       return {
         appData: j.data_dir,
         sidecars: 'beside each photograph (.spektra.json)',
-        logs: '/api/diagnostics',
+        logs: 'bridge /api/diagnostics',
         home: j.mode === 'fnos' ? '(fnOS)' : '(bridge)',
         pictures: '(authorized roots)',
         os: j.mode === 'fnos' ? 'fnOS' : 'bridge',
@@ -93,7 +102,7 @@ export function bridgePlatform(): Platform {
     pickFiles: async (title) => pickFileDialog(title),
     pickSave: async (_title, defaultPath) => defaultPath,
     reveal: async () => {},
-    openUrl: async (url) => void window.open(url, '_blank'),
+    openUrl: async (url_) => void window.open(url_, '_blank'),
     message: async (title, text) => window.alert(`${title}\n\n${text}`),
     confirm: async (title, text) => window.confirm(`${title}\n\n${text}`),
     onOpenPaths: (cb) => {
@@ -152,7 +161,7 @@ export function onPendingUploads(cb: (files: File[]) => void): () => void {
 // ------------------------------------------------------------------- pickers
 
 export async function pickFolderDialog(title: string): Promise<string | null> {
-  const roots = (await api<{ roots: { path: string; name: string; semantic?: string }[] }>('/api/fs/roots')).roots;
+  const roots = (await api<{ roots: { path: string; name: string; semantic?: string }[] }>('fs/roots')).roots;
   if (!roots.length) {
     window.alert(`${title}\n\nNo authorized photo roots. Ask the administrator to grant one (fnOS app authorization) or set SPEKTRALAB_PHOTOS_ROOTS.`);
     return null;
@@ -203,7 +212,7 @@ function browseDialog(title: string, roots: { path: string; name: string }[], mo
         return;
       }
       cur = path;
-      const j = (await fetch(`/api/fs/list?path=${encodeURIComponent(path)}`).then((r) => r.json())) as DirListing & { error?: { message: string } };
+      const j = (await fetch(url(`fs/list?path=${encodeURIComponent(path)}`)).then((r) => r.json())) as DirListing & { error?: { message: string } };
       if (!j.ok) {
         const err = document.createElement('div');
         err.textContent = j.error?.message ?? 'cannot read';

@@ -37,4 +37,13 @@ if [ -z "$LOADED" ] || ! image_present "$LOADED"; then
 fi
 "$DOCKER" tag "$LOADED" "$IMG_REF"
 echo "tagged $LOADED -> $IMG_REF"
+
+# Recreate the compose project so the container always mounts the CURRENT
+# app dir (a stale container binds a deleted inode after uninstall/reinstall
+# and the gateway socket vanishes).  Runs with the framework's TRIM_* env.
+if [ -f "$TRIM_APPDEST/docker/docker-compose.yaml" ]; then
+  echo "recreating compose project"
+  "$DOCKER" compose -f "$TRIM_APPDEST/docker/docker-compose.yaml" up -d --force-recreate \
+    || echo "compose force-recreate failed (framework will start the project)" > "${TRIM_TEMP_LOGFILE:-/dev/null}"
+fi
 exit 0

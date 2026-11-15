@@ -111,7 +111,7 @@ node scripts/copy-assets.mjs 2>/dev/null || {
 }
 
 echo "==> vite build"
-npx vite build --outDir "$here/dist" --emptyOutDir
+npx vite build --base ./ --outDir "$here/dist" --emptyOutDir
 
 echo "==> frontend bundle at $here/dist"
 ls -la "$here/dist" | head -8

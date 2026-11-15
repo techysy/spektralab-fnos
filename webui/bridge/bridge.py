@@ -419,6 +419,32 @@ class Handler(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
     server_version = 'spektralab-fnos-bridge'
 
+    # The fnOS unified gateway forwards /app/<appname>/... verbatim; the app
+    # name prefix is stripped here so every route below stays prefix-free.
+    GATEWAY_PREFIX = '/app/' + os.environ.get('TRIM_APPNAME', 'spektralab-fnos').strip()
+
+    def _route(self):
+        p = self.path
+        if p.startswith(self.GATEWAY_PREFIX):
+            rest = p[len(self.GATEWAY_PREFIX):]
+            if not rest.startswith('/'):
+                rest = '/' + rest
+            self.path = rest
+        elif p.rstrip('/') == self.GATEWAY_PREFIX:
+            self.path = '/'
+
+    def do_GET(self):
+        self._route()
+        self.api(lambda: self._get())
+
+    def do_POST(self):
+        self._route()
+        self.api(lambda: self._post())
+
+    def do_PUT(self):
+        self._route()
+        self.api(lambda: self._put())
+
     def log_message(self, fmt, *args):  # noisy at info level; keep the tail clean
         pass
 
@@ -455,16 +481,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             self.send_json({'ok': False, 'error': {'code': 'internal', 'message': str(e)}}, 500)
 
-    # -- dispatch
-
-    def do_GET(self):
-        self.api(lambda: self._get())
-
-    def do_POST(self):
-        self.api(lambda: self._post())
-
-    def do_PUT(self):
-        self.api(lambda: self._put())
+    # -- dispatch (do_GET/do_POST/do_PUT live at the class top, after _route)
 
     def _get(self):
         u = urllib.parse.urlparse(self.path)

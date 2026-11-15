@@ -34,8 +34,10 @@ services:
       - "44"
       - "105"
     environment:
-      # unified gateway socket (created in the app target dir, bind-mounted here)
-      SPEKTRALAB_FNOS_SOCKET: /sock/app.sock
+      # unified gateway socket, created inside the mounted app target dir
+      SPEKTRALAB_FNOS_SOCKET: /host-target/app.sock
+      # the bridge strips /app/<appname> from gateway-forwarded requests
+      TRIM_APPNAME: ${TRIM_APPNAME:-spektralab-fnos}
       # the bridge listens on the manifest's service_port (fnOS injects it);
       # the ui/config entry opens http://<nas>:$TRIM_SERVICE_PORT/
       SPEKTRALAB_FNOS_PORT: ${TRIM_SERVICE_PORT:-8777}
@@ -54,8 +56,13 @@ services:
       # is injected by the fnOS framework; 8777 matches manifest.service_port)
       - "${TRIM_SERVICE_PORT:-8777}:${TRIM_SERVICE_PORT:-8777}"
     volumes:
-      # the gateway socket the fnOS app framework forwards /app/spektralab-fnos to
-      - ${TRIM_APPDEST}/app.sock:/sock
+      # the app target dir, rw: the bridge creates the gateway socket in it
+      # (/target/app.sock on the container side => ${TRIM_APPDEST}/app.sock on
+      # the host, exactly where the fnOS gateway looks).  Mounting the
+      # directory -- not a pre-existing socket file -- sidesteps docker's
+      # "missing file becomes a directory" bind-mount trap and survives
+      # uninstall/reinstall cycles.
+      - ${TRIM_APPDEST}:/host-target
       # app data (stores, inbox uploads, exports): TRIM_PKGVAR points at
       # /vol{n}/@appdata/{appname} -- writable and persistent across upgrades
       - ${TRIM_PKGVAR}:/data
@@ -67,8 +74,9 @@ services:
       # trim open-API socket: the bridge calls it per request for roots + ACL
       - /var/run/trim_open_gateway_apiscope.socket:/var/run/trim_open_gateway_apiscope.socket:ro
     healthcheck:
-      # gateway socket mode: probe through the unix socket via python http.client
-      test: ["CMD", "python3", "-c", "import http.client, socket; s=socket.socket(socket.AF_UNIX); s.settimeout(5); s.connect('/sock/app.sock'); c=http.client.HTTPConnection('localhost'); c.sock=s; c.request('GET','/api/hello'); r=c.getresponse(); r.read(); raise SystemExit(0 if r.status==200 else 1)"]
+      # healthcheck.py (in the image) probes the bridge through the gateway
+      # unix socket when SPEKTRALAB_FNOS_SOCKET is set, else the TCP port
+      test: ["CMD", "python3", "/opt/bridge/healthcheck.py"]
       interval: 30s
       timeout: 10s
       retries: 3

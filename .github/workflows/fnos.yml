@@ -1,14 +1,15 @@
 # Build the fnOS deliverables on a hosted runner:
 #   build.sh              -> engine host (debian:12, lavapipe CTest, glibc gate) + headless image
 #   webui/build-webui.sh  -> frontend (upstream desktop + overlay) + WebUI image + bridge smoke
-#   webui/pack-fpk.sh     -> fpk project staging (image tar inside; fnpack when present)
+#   fpk job               -> SpektraLab-FnOS-{Tab,Window}-<version>-x86.fpk (fnpack in CI, pinned)
 # Tag pushes (v*) attach everything to a GitHub Release.
 #
+# The two fpk variants share the appname and the data dir: install one over
+# the other to switch between "Tab" (browser new tab over :8777) and
+# "Window" (fnOS unified-gateway iframe, NAS login state + per-user headers).
+#
 # Upstream updates stay a one-line change: bump UPSTREAM_PIN, push, and this
-# workflow rebuilds both deliverables through the same verified gates.  The
-# fpk *packing* (fnpack -> .fpk) runs on a machine that has fnpack (the fnOS
-# packer is not distributed for hosted runners); pack-fpk.sh stages the exact
-# layout so packing is a single `fnpack build` -- manual, but one command.
+# workflow rebuilds all deliverables through the same verified gates.
 name: fnOS image
 
 on:
@@ -28,7 +29,7 @@ permissions:
 
 jobs:
   build:
-    name: Engine + WebUI + fpk stage
+    name: Engine + WebUI images
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -42,12 +43,9 @@ jobs:
       - name: Build WebUI (frontend + bridge image + smoke)
         run: bash webui/build-webui.sh
 
-      - name: Stage the fpk project
-        run: bash webui/pack-fpk.sh || true   # fnpack absent on runners: staging only
-
       - uses: actions/upload-artifact@v4
         with:
-          name: spektralab-fnos
+          name: spektralab-fnos-images
           path: |
             dist/spektralab-fnos-*.tar.gz
             dist/SHA256SUMS
@@ -55,21 +53,88 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  fpk:
+    name: fpk (${{ matrix.variant }})
+    needs: build
+    strategy:
+      matrix:
+        variant: [tab, window]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the WebUI image tar
+        uses: actions/download-artifact@v4
+        with:
+          name: spektralab-fnos-images
+          path: dist/
+
+      - name: Stage the fpk project for this variant
+        env:
+          FPK_VARIANT: ${{ matrix.variant }}
+        run: bash webui/pack-fpk.sh
+
+      - name: Download fnpack (pinned)
+        env:
+          FNPACK_VERSION: "1.2.1"
+          FNPACK_SHA256: "72d2a4095da676b64510b023731a227b369d80f8079bc45ff8a2f802ec0480c1"
+        run: |
+          curl -fsSL -o /usr/local/bin/fnpack "https://static2.fnnas.com/fnpack/fnpack-${FNPACK_VERSION}-linux-amd64"
+          echo "${FNPACK_SHA256}  /usr/local/bin/fnpack" | sha256sum -c -
+          chmod +x /usr/local/bin/fnpack
+          fnpack --help | head -3
+
+      - name: Build fpk
+        working-directory: webui/fpk-dist/spektralab-fnos
+        run: |
+          set -euo pipefail
+          rm -f spektralab-fnos.fpk
+          fnpack build
+          VERSION="$(grep -E '^version[[:space:]]*=' manifest | head -1 | sed 's/.*=//;s/[[:space:]]//g')"
+          [ -n "$VERSION" ] || { echo "ERROR: no version in manifest"; exit 1; }
+          VARIANT="$(echo '${{ matrix.variant }}' | sed 's/^\(.\)/\U\1/')"
+          OUT="SpektraLab-FnOS-${VARIANT}-${VERSION}-x86.fpk"
+          mv spektralab-fnos.fpk "$OUT"
+          ls -lh "$OUT"
+          echo "FPK_NAME=$OUT" >> "$GITHUB_ENV"
+
       - uses: actions/upload-artifact@v4
         with:
-          name: spektralab-fnos-fpk-project
-          path: webui/fpk-dist/
-          if-no-files-found: warn
+          name: spektralab-fnos-fpk-${{ matrix.variant }}
+          path: webui/fpk-dist/spektralab-fnos/SpektraLab-FnOS-*.fpk
+          if-no-files-found: error
           retention-days: 30
 
-      - name: Attach to the tag's release (tag pushes only)
-        if: startsWith(github.ref, 'refs/tags/v')
+  release:
+    needs: [build, fpk]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: rel/
+          pattern: spektralab-fnos-*
+          merge-multiple: true
+
+      - name: Ensure release exists
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          tag="$GITHUB_REF_NAME"
-          gh release view "$tag" 2>/dev/null || gh release create "$tag" --title "$tag" --generate-notes
-          gh release upload "$tag" dist/spektralab-fnos-*.tar.gz dist/SHA256SUMS* --clobber
-          echo "attached to release $tag"
-          echo "fpk packing: download the fpk-project artifact, then 'fnpack build' inside spektralab-fnos/"
+          gh release view "${{ github.ref_name }}" >/dev/null 2>&1 || \
+            gh release create "${{ github.ref_name }}" --title "${{ github.ref_name }}" --generate-notes
+
+      - name: Checksum + upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          ls -lh rel/
+          ( cd rel && sha256sum *.fpk *.tar.gz > SHA256SUMS )
+          N=$(ls rel/SpektraLab-FnOS-*.fpk rel/*.tar.gz rel/SHA256SUMS | wc -l)
+          [ "$N" -ge 6 ] || { echo "ERROR: expected >=6 files (2 fpk + 2 images + sums), found $N"; exit 1; }
+          gh release upload "${{ github.ref_name }}" rel/* --clobber
+          echo "attached to release ${{ github.ref_name }}"

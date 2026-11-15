@@ -7,6 +7,13 @@
 import type { HostState } from '@shared/protocol';
 import { HostCallError, type Reply, type Transport } from './transport';
 
+// the app may live under a sub-path (fnOS gateway /app/<name>/); boot-bridge
+// resolves the base before anything here runs
+declare global {
+  interface Window { __SPK_BASE__?: string }
+}
+const api = (p: string) => `${window.__SPK_BASE__ ?? '/'}${p}`;
+
 const RPC_TIMEOUT_DEFAULT_MS = 180_000;
 
 interface AppInfo {
@@ -42,7 +49,7 @@ export function bridgeTransport(): Transport {
 
   function connectEvents() {
     if (es) return;
-    es = new EventSource('/api/events');
+    es = new EventSource(api('api/events'));
     es.onmessage = (m) => {
       try {
         const msg = JSON.parse(m.data) as Record<string, unknown>;
@@ -67,7 +74,7 @@ export function bridgeTransport(): Transport {
   async function ready(): Promise<void> {
     if (!readyPromise) {
       readyPromise = (async () => {
-        const r = await fetch('/api/hello');
+        const r = await fetch(api('api/hello'));
         if (!r.ok) throw new Error(`bridge /api/hello ${r.status}`);
         const j = (await r.json()) as { ok: boolean; hello: Record<string, unknown> };
         if (!j.ok) throw new Error('bridge /api/hello not ok');
@@ -86,7 +93,7 @@ export function bridgeTransport(): Transport {
       const id = nextId++;
       const frame = encodeFrame({ id, method, params }, opts?.payload);
       const t0 = performance.now();
-      const r = await fetch('/api/rpc', {
+      const r = await fetch(api('api/rpc'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/octet-stream' },
         body: frame.buffer.slice(frame.byteOffset, frame.byteOffset + frame.byteLength) as ArrayBuffer,
@@ -140,7 +147,7 @@ export function bridgeTransport(): Transport {
       return () => eventListeners.delete(cb);
     },
     async restart() {
-      await fetch('/api/host/restart', { method: 'POST' });
+      await fetch(api('api/host/restart'), { method: 'POST' });
       readyPromise = null;
       es?.close();
       es = null;
@@ -148,7 +155,7 @@ export function bridgeTransport(): Transport {
       noteState({ phase: 'ready', hello: hello as never });
     },
     async diagnostics() {
-      const r = await fetch('/api/diagnostics');
+      const r = await fetch(api('api/diagnostics'));
       return r.json();
     },
   };
