@@ -47,7 +47,9 @@ start)
     exit 0
   fi
   rm -f "$PID_FILE" "$APP_DIR/app.sock"
-  mkdir -p "$DATA_DIR"
+  mkdir -p "$DATA_DIR" "${TRIM_PKGHOME:-$DATA_DIR}"
+  # HOME must exist for Mesa's shader cache (otherwise it disables itself)
+  export HOME="${TRIM_PKGHOME:-$DATA_DIR}"
   nohup "$PY" "$BRIDGE" >> "$LOG" 2>&1 &
   echo $! > "$PID_FILE"
   for _ in $(seq 1 30); do
