@@ -23,7 +23,7 @@
 
 services:
   spektralab:
-    image: spektralab-fnos:${SPEKTRALAB_VERSION:-0.2.0}
+    image: spektralab-fnos:webui
     container_name: spektralab-fnos
     restart: unless-stopped
     devices:
@@ -46,7 +46,7 @@ services:
       # below at their real paths, per-user ACL then applies via the gateway.
       SPEKTRALAB_PHOTOS_ROOTS: "/vol1;/vol02"
       SPEKTRALAB_DEVICE: ""
-      SPEKTRALAB_FNOS_VERSION: ${SPEKTRALAB_VERSION:-0.2.0}
+      SPEKTRALAB_FNOS_VERSION: ${TRIM_APPVER:-0.2.1}
       # TRIM_API_TOKEN / TRIM_APPNAME / TRIM_UID / TRIM_APPDEST / TRIM_PKGVAR
       # are injected by the fnOS app framework; nothing to set here.
     ports:

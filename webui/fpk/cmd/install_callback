@@ -1,35 +1,40 @@
 #!/bin/bash
-# install_callback -- after install: load the engine image before the compose
-# project starts.  The fpk ships the image tar next to the compose file
-# (app/docker/spektralab-fnos.tar.gz); `docker load` is idempotent, so an
-# upgrade re-runs it harmlessly.
+# install_callback -- after install/upgrade: make sure the compose's image
+# reference (spektralab-fnos:webui, a stable local tag decoupled from app
+# versions) resolves before the framework brings the project up.
 #
-# Lifecycle scripts run as the package user (config/privilege run-as=package),
-# which reaches the docker socket through join-groups: docker.  If the load
-# still fails but the compose's image reference already resolves locally
-# (pre-loaded or pulled), treat it as done instead of failing the install.
+# The fpk ships the image tar next to the compose file
+# (app/docker/spektralab-fnos.tar.gz).  `docker load` restores whatever tag
+# the tar carries (webui-<appver>); we retag it to the stable reference.
+#
+# Lifecycle scripts run as the package user (config/privilege
+# run-as=package), which reaches the docker socket through
+# join-groups: docker.
 set -e
 DOCKER="$(command -v docker || echo /usr/bin/docker)"
 IMG_TAR="$TRIM_APPDEST/docker/spektralab-fnos.tar.gz"
-IMG_REF="spektralab-fnos:${SPEKTRALAB_VERSION:-0.2.0}"
+IMG_REF="spektralab-fnos:webui"
 
 image_present() {
   "$DOCKER" image inspect "$1" > /dev/null 2>&1
 }
 
-if [ -f "$IMG_TAR" ]; then
-  if image_present "$IMG_REF"; then
-    echo "image $IMG_REF already present"
-  else
-    echo "loading engine image from $IMG_TAR"
-    if ! "$DOCKER" load -i "$IMG_TAR"; then
-      if image_present "$IMG_REF"; then
-        echo "docker load failed but $IMG_REF is present; continuing"
-      else
-        { echo "docker load failed and $IMG_REF is not present"; "$DOCKER" load -i "$IMG_TAR" 2>&1 | tail -5; } > "$TRIM_TEMP_LOGFILE"
-        exit 1
-      fi
-    fi
-  fi
+if image_present "$IMG_REF"; then
+  echo "image $IMG_REF already present"
+  exit 0
 fi
+
+if [ ! -f "$IMG_TAR" ]; then
+  echo "$IMG_TAR missing and $IMG_REF not present" > "${TRIM_TEMP_LOGFILE:-/dev/null}"
+  exit 1
+fi
+
+echo "loading engine image from $IMG_TAR"
+LOADED="$("$DOCKER" load -i "$IMG_TAR" 2>&1 | grep -oE 'spektralab-fnos:[^ ]+' | head -1 || true)"
+if [ -z "$LOADED" ] || ! image_present "$LOADED"; then
+  echo "docker load did not yield a usable image" > "${TRIM_TEMP_LOGFILE:-/dev/null}"
+  exit 1
+fi
+"$DOCKER" tag "$LOADED" "$IMG_REF"
+echo "tagged $LOADED -> $IMG_REF"
 exit 0

@@ -1,16 +1,29 @@
 #!/bin/bash
-# upgrade_callback -- after upgrade: reload the engine image for the new
-# version.  Same fallback policy as install_callback: a failed load is fatal
-# only when the compose's image reference does not already resolve locally.
+# upgrade_callback -- after upgrade: same contract as install_callback -- the
+# stable tag spektralab-fnos:webui must resolve, from the freshly shipped tar.
 set -e
 DOCKER="$(command -v docker || echo /usr/bin/docker)"
 IMG_TAR="$TRIM_APPDEST/docker/spektralab-fnos.tar.gz"
-IMG_REF="spektralab-fnos:${SPEKTRALAB_VERSION:-0.2.0}"
+IMG_REF="spektralab-fnos:webui"
 
-if [ -f "$IMG_TAR" ] && ! "$DOCKER" image inspect "$IMG_REF" > /dev/null 2>&1; then
-  "$DOCKER" load -i "$IMG_TAR" || {
-    echo "docker load failed and $IMG_REF is not present" > "$TRIM_TEMP_LOGFILE"
-    exit 1
-  }
+image_present() {
+  "$DOCKER" image inspect "$1" > /dev/null 2>&1
+}
+
+# an upgrade ships a new tar: reload it even if the old tag exists, so the
+# stable reference points at the NEW engine build.
+if [ -f "$IMG_TAR" ]; then
+  LOADED="$("$DOCKER" load -i "$IMG_TAR" 2>&1 | grep -oE 'spektralab-fnos:[^ ]+' | head -1 || true)"
+  if [ -n "$LOADED" ] && image_present "$LOADED"; then
+    "$DOCKER" tag "$LOADED" "$IMG_REF"
+    echo "tagged $LOADED -> $IMG_REF"
+    exit 0
+  fi
+  if image_present "$IMG_REF"; then
+    echo "load failed but $IMG_REF already present; continuing"
+    exit 0
+  fi
+  echo "docker load failed and $IMG_REF is not present" > "${TRIM_TEMP_LOGFILE:-/dev/null}"
+  exit 1
 fi
 exit 0
