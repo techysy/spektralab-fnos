@@ -67,6 +67,7 @@ jobs:
     name: fpk (${{ matrix.variant }})
     needs: build
     strategy:
+      fail-fast: false
       matrix:
         variant: [tab, window]
     runs-on: ubuntu-24.04

@@ -1,6 +1,6 @@
 {
   ".url": {
-    "spektralab-fnos.main": {
+    "spektralab.main": {
       "title": "SpektraLab",
       "icon": "images/icon_{0}.png",
       "type": "url",
