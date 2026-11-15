@@ -1,56 +1,102 @@
 # spektralab-fnos
 
-[SpektraLab](https://github.com/JamesQiu2005/SpektraLab) 渲染引擎的 fnOS（飞牛 NAS）交付：把 `spektralab-host`——按物理过程建模的胶片暗房引擎——打包成 Docker 镜像，在无 GPU 的 NAS 上通过 Mesa lavapipe（CPU Vulkan）渲染。
+> SpektraLab — 按物理过程建模的胶片暗房引擎：RAW 进，胶片模拟 + 放大印相出。跑在你的飞牛 NAS 上，核显加速，浏览器直接用。
+>
+> SpektraLab — a physics-modeled film darkroom engine: RAW in, film simulation + enlarger printing out. Runs on your fnOS NAS with iGPU acceleration, right in the browser.
 
-**这是什么**：无界面的引擎宿主。它通过 stdin/stdout 说 [上游 HOST-PROTOCOL](https://github.com/JamesQiu2005/SpektraLab/blob/main/desktop/HOST-PROTOCOL.md) 定义的二进制帧 JSON-RPC（`hello` / 渲染 RAW / 胶片模拟 / 导出 TIFF 等 24 个方法），给上层 UI 或脚本调用。
+将 [JamesQiu2005/SpektraLab](https://github.com/JamesQiu2005/SpektraLab) 的引擎宿主打包为飞牛 NAS (fnOS) 应用：无 GPU 的 NAS 通过 Mesa lavapipe（CPU Vulkan）渲染；有核显（Intel UHD 730 实测）则透传 `/dev/dri` 由 Mesa ANV 直接渲染。
 
-**这不是什么**：不是图形应用。上游的 Tauri 桌面版需要显示环境（WebKitGTK + X11/Wayland），不适合无头 NAS；fnOS 应用商店的 fpk 打包在 Roadmap 里。
+---
 
-## 在 fnOS 上使用
+## 它是什么 / What it is
+
+- **引擎宿主**：`spektralab-host`，无界面，stdio 二进制帧 JSON-RPC（[HOST-PROTOCOL](https://github.com/JamesQiu2005/SpektraLab/blob/main/desktop/HOST-PROTOCOL.md)，24 个方法：open / render / set_params / export 等）
+- **桥接服务**：`webui/bridge/bridge.py`（纯标准库 Python）——托管宿主进程，HTTP 透传协议帧 + SSE 进度事件 + 文件 API
+- **WebUI**：复用上游 React 界面（overlay 注入桥接传输层），完整编辑器：胶片/相纸选择、曝光与滤镜包、Curve、导出 TIFF16/JPEG/PNG/.cube
+- **fnOS app**：fpk 打包，App Center 安装，桌面图标直开
+
+## 快速开始 / Quick Start
+
+### 方式一：使用 Release（推荐） / Option 1: Release
+
+1. 从 [Releases](https://github.com/techysy/spektralab-fnos/releases) 下载 `spektralab-fnos.fpk`（或 CI artifact 里的 `spektralab-fnos-fpk-project` 自行 `fnpack build`）
+2. 飞牛 App Center → **手动安装** → 选择 fpk 文件
+3. 应用设置 → **授权目录**：勾选照片所在的文件夹
+4. 桌面出现 **SpektraLab** 图标，点击打开（端口 8777）
+5. 浏览器里选照片 → 选胶片/相纸 → 调参 → 导出
+
+### 方式二：独立 Docker（无 fpk） / Option 2: plain Docker
 
 ```bash
-# 导入镜像（fnOS 的 Docker 管理界面，或 SSH）
-docker load -i spektralab-fnos-<version>.tar.gz
-
-# 冒烟：宿主应以一帧 JSON 应答 hello
-echo '{"id":1,"method":"hello","params":{}}' | docker run -i --rm spektralab-fnos:<version>
+docker load -i dist/spektralab-fnos-webui-<version>.tar.gz
+docker run -d --name spektralab -p 8777:8080 \
+  --device /dev/dri \
+  -e SPEKTRALAB_PHOTOS_ROOTS=/photos \
+  -v /vol1/1000/photo:/photos:ro \
+  -v spektralab-data:/data \
+  spektralab-fnos:webui-<version>
+# 浏览器打开 http://<nas-ip>:8777
 ```
 
-上层调用按帧协议（`u32 LE header_len` + `u32 LE payload_len` + JSON + 二进制载荷）通信。性能参考：CPU（lavapipe）渲染一张全尺寸照片约几十秒；NAS 若有受支持的核显，设备透传进容器可大幅提速。
-
-## 本地构建
-
-任意装了 Docker 的机器：
+### 从源码构建 / Build from Source
 
 ```bash
-bash build.sh          # 全流程：克隆上游 pin → 容器构建 → 测试 → 镜像 → 冒烟 → 打包
-bash build.sh --skip-build   # 只重打镜像与产物
+bash build.sh               # 引擎宿主：上游 pin → debian:12 构建 → 14 项 CTest(lavapipe) → glibc 门禁 → 镜像
+bash webui/build-webui.sh   # WebUI：前端 overlay + vite → 镜像 → 冒烟
+bash webui/pack-fpk.sh      # fpk 项目组装（NAS 上 fnpack build 出 .fpk）
 ```
 
-流程与门禁（脚本内固化）：
+## 端口与数据 / Port & Data
 
-1. 克隆上游 [SpektraLab](https://github.com/JamesQiu2005/SpektraLab) 并检出 `UPSTREAM_PIN` 指定的 commit（当前 `1952c63`，v2.3.2）；
-2. `debian:12` 容器内 `engine/build-linux.sh --test`（gcc 12、CMake/Ninja、glslang，**14 项 CTest 于 lavapipe** + 宿主冒烟）；
-3. **glibc 门禁**：产物最高 GLIBC 符号需求必须 ≤ 2.36——fnOS 基于 Debian 12，上游 CI 的 Ubuntu 24.04 二进制（glibc 2.39）在 fnOS 上跑不起来，这正是本项目存在的理由；
-4. 组装运行时镜像（引擎宿主 + 全部资源 + Mesa lavapipe，603MB → 压缩约 150MB）；
-5. 镜像内协议冒烟（`hello` 应答 `backend.available: true`）；
-6. 产出 `dist/`：镜像 tar.gz + 裸宿主 tar.gz + SHA256SUMS。
+- **端口**：8777（manifest `service_port`，浏览器直连）
+- **应用数据**：`/vol{n}/@appdata/spektralab-fnos/`（设置存储、上传 inbox、导出文件）
+- **照片目录**：应用内只读（导出写入应用数据目录）；独立 Docker 模式由 `SPEKTRALAB_PHOTOS_ROOTS` 指定
+- **核显**：`/dev/dri` 透传 + `video`/`render` 组；`SPEKTRALAB_DEVICE` 可指定 Vulkan 设备序号
 
-可选加速：把已校验的 `LibRaw-0.22.2.zip` 放进 `deps-seed/`（容器内会重新校验哈希）。
+## 性能参考 / Performance
 
-## 更新上游版本
+Intel UHD Graphics 730（ADL-S）实测，Sony A7M2 24MP RAW：
 
-改 `UPSTREAM_PIN` 为新 commit，重跑 `build.sh`。所有测试与门禁会重新执行。
+| 操作 | 耗时 |
+|---|---|
+| RAW 解码（首次打开，一次性） | ~7s |
+| live 渲染（拖滑块，1600px） | **0.9s** |
+| preview 渲染（3400px） | 1.6s |
+| full 渲染（6024px 全尺寸） | **4.6s** |
+| print 侧调参（reprint，负片缓存命中） | 更快 |
 
-## Roadmap
+无核显时回落 lavapipe（CPU），全尺寸约几十秒。
 
-- **fpk 打包**：fnOS 应用商店的 fpk 格式（待做）；
-- CI：GitHub Actions 上跑同一 `build.sh`，tag 自动发 Release；
-- HTTP/WebSocket 桥：给网页前端当常驻服务（当前协议是 stdio，需要一层薄封装）。
+## 架构 / Architecture
 
-## 许可
+```
+浏览器（上游 React UI + overlay）
+   │  HTTP: POST /api/rpc（协议帧透传）+ SSE 进度 + 文件 API
+   ▼
+bridge.py（python3 标准库）
+   ├── spektralab-host 子进程（stdio 帧）
+   ├── 文件：授权目录浏览 / sidecar / 设置 / 上传 inbox
+   └── fnOS 模式：trim 开放 API（授权目录 + checkUserACL 逐用户鉴权）
+```
 
-- 宿主与引擎：GPL-3.0-or-later（对应源码 = `UPSTREAM_PIN` 指向的上游检出；本仓库只含构建/打包脚本与镜像定义）。
-- 胶片/相纸配置与放大 LUT：CC BY-SA 4.0（spektrafilm）。
-- LibRaw：LGPL-2.1；Vulkan-Headers：Apache-2.0 OR MIT；stb：公有领域/MIT；volk：MIT。
-- 派生关系与细节见上游 [license/NOTICE.md](https://github.com/JamesQiu2005/SpektraLab/blob/main/license/NOTICE.md)；镜像内 `licenses/` 随包齐全。
+详见 [WEBUI.md](WEBUI.md)。
+
+## 踩坑记录 / Pitfalls
+
+详见 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)（fpk 打包与 fnOS 生命周期的完整坑录）。
+
+## 更新上游 / Upstream updates
+
+改 `UPSTREAM_PIN` 为新 commit → push → CI 重建（全部测试与门禁重跑）→ tag `v*` 发 Release。fpk 重打包只需 NAS 上 `fnpack build`。
+
+## 相关链接 / Links
+
+- [SpektraLab 上游](https://github.com/JamesQiu2005/SpektraLab) · [fnOS 开发者文档](https://developer.fnnas.com/docs/guide)
+- [HOST-PROTOCOL](https://github.com/JamesQiu2005/SpektraLab/blob/main/desktop/HOST-PROTOCOL.md)（引擎线协议）
+
+## 许可 / License
+
+- 宿主与引擎：GPL-3.0-or-later（对应源码 = `UPSTREAM_PIN` 指向的上游检出；本仓库只含构建/打包/桥接代码）
+- 胶片/相纸配置与放大 LUT：CC BY-SA 4.0（spektrafilm）
+- LibRaw：LGPL-2.1；Vulkan-Headers：Apache-2.0 OR MIT；stb：公有领域/MIT；volk：MIT
+- 派生关系与细节见上游 [license/NOTICE.md](https://github.com/JamesQiu2005/SpektraLab/blob/main/license/NOTICE.md)

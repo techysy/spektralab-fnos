@@ -1,34 +1,45 @@
 #!/bin/bash
 # cmd/main -- start/stop/status for the SpektraLab fnOS app.
 #
-# The app service is a Docker Compose project (config/resource
-# docker-project): fnOS's app framework handles compose lifecycle for the
-# containers; what remains here is health status.  Under the unified gateway
-# the WebUI is reachable at /app/spektralab-fnos; the container's bridge opens
-# the gateway unix socket at $TRIM_APPDEST/app.sock.
+# The service runs as a Docker Compose project (config/resource
+# docker-project): the app center brings the project up at install and
+# starts/stops it at the framework level -- cmd/main only reports and waits.
+# The WebUI opens at http://<nas>:8777 (manifest service_port, type: url
+# entry, same pattern as the other fnOS apps).
+
+DOCKER="$(command -v docker || echo /usr/bin/docker)"
+APP_NAME="${TRIM_APPNAME:-spektralab-fnos}"
+APP_DIR="${TRIM_APPDEST:-/var/apps/${APP_NAME}}"
+COMPOSE_DIR="${APP_DIR}/docker"
+PORT="${TRIM_SERVICE_PORT:-8777}"
+
+container_state() {
+  "$DOCKER" inspect -f '{{.State.Status}}' "$APP_NAME" 2>/dev/null || echo "missing"
+}
 
 case "$1" in
 start)
-  # compose project is started by the framework after this returns; wait
-  # briefly for the bridge's gateway socket so the first click works.
+  # compose is started by the framework; wait for the bridge to answer.
   for _ in $(seq 1 30); do
-    [ -S "$TRIM_APPDEST/app.sock" ] && exit 0
+    if curl -sf --max-time 2 "http://127.0.0.1:${PORT}/api/hello" > /dev/null 2>&1; then
+      exit 0
+    fi
     sleep 1
   done
-  echo "bridge socket did not appear at $TRIM_APPDEST/app.sock" > "$TRIM_TEMP_LOGFILE"
+  echo "bridge did not answer on port ${PORT} within 30s" > "${TRIM_TEMP_LOGFILE:-/dev/null}"
   exit 0
   ;;
 stop)
   exit 0
   ;;
 status)
-  if [ -S "$TRIM_APPDEST/app.sock" ]; then
+  if [ "$(container_state)" = "running" ] && curl -sf --max-time 2 "http://127.0.0.1:${PORT}/api/hello" > /dev/null 2>&1; then
     exit 0
   fi
   exit 3
   ;;
 *)
-  echo "usage: main {start|stop|status}" > "$TRIM_TEMP_LOGFILE"
+  echo "usage: main {start|stop|status}" > "${TRIM_TEMP_LOGFILE:-/dev/null}"
   exit 1
   ;;
 esac

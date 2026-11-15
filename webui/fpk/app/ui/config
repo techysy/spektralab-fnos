@@ -3,7 +3,7 @@
     "spektralab-fnos.main": {
       "title": "SpektraLab",
       "icon": "images/icon_{0}.png",
-      "type": "iframe",
+      "type": "url",
       "protocol": "http",
       "port": "8777",
       "url": "/",
