@@ -66,8 +66,9 @@ export function bridgeTransport(): Transport {
       }
     };
     es.onerror = () => {
-      // EventSource retries on its own; surface a soft state once.
-      noteState({ phase: 'restarting', reason: 'event stream lost', attempt: 1 });
+      // EventSource retries on its own and per-request health is independent
+      // (plain HTTP), so a dropped event stream says nothing about the
+      // engine.  Only the explicit host_down event surfaces a state change.
     };
   }
 
