@@ -101,7 +101,7 @@ jobs:
         working-directory: webui/fpk-dist/spektralab
         run: |
           set -euo pipefail
-          rm -f spektralab-fnos.fpk
+          rm -f spektralab.fpk
           fnpack build
           VERSION="$(grep -E '^version[[:space:]]*=' manifest | head -1 | sed 's/.*=//;s/[[:space:]]//g')"
           [ -n "$VERSION" ] || { echo "ERROR: no version in manifest"; exit 1; }
