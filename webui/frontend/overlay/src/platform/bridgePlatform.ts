@@ -100,7 +100,7 @@ export function bridgePlatform(): Platform {
     },
     pickFolder: (title) => pickFolderDialog(title),
     pickFiles: async (title) => pickFileDialog(title),
-    pickSave: async (_title, defaultPath) => defaultPath,
+    pickSave: async (title, defaultPath) => pickSaveDialog(title, defaultPath),
     reveal: async () => {},
     openUrl: async (url_) => void window.open(url_, '_blank'),
     message: async (title, text) => window.alert(`${title}\n\n${text}`),
@@ -181,6 +181,23 @@ export async function pickFolderDialog(title: string): Promise<string | null> {
   return browseDialog(title, roots.map((r) => ({ path: r.path, name: r.semantic ?? r.name })), 'folder');
 }
 
+export async function pickSaveDialog(title: string, defaultPath: string): Promise<string | null> {
+  const roots = (await api<{ roots: { path: string; name: string; semantic?: string }[] }>('fs/roots')).roots;
+  if (!roots.length) {
+    window.alert(`${title}
+
+No authorized location. Grant one in app settings (fnOS) or set SPEKTRALAB_PHOTOS_ROOTS.`);
+    return null;
+  }
+  // preselect the root that contains the suggested path, if any
+  return browseDialog(
+    title,
+    roots.map((r) => ({ path: r.path, name: r.semantic ?? r.name })),
+    'save',
+    defaultPath,
+  );
+}
+
 export async function pickFileDialog(title: string): Promise<string[]> {
   // Local files: upload to the inbox and return their NAS paths.
   const input = document.createElement('input');
@@ -200,7 +217,7 @@ export async function pickFileDialog(title: string): Promise<string[]> {
   return paths;
 }
 
-function browseDialog(title: string, roots: { path: string; name: string }[], mode: 'folder' | 'file'): Promise<string | null> {
+function browseDialog(title: string, roots: { path: string; name: string }[], mode: 'folder' | 'file' | 'save', defaultPath?: string): Promise<string | null> {
   return new Promise((res) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:99999';
@@ -213,8 +230,20 @@ function browseDialog(title: string, roots: { path: string; name: string }[], mo
     list.style.cssText = 'flex:1;overflow:auto;border:1px solid rgba(255,255,255,.12);border-radius:6px';
     const foot = document.createElement('div');
     foot.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-top:10px';
+    const nameRow = document.createElement('div');
+    nameRow.style.cssText = 'display:flex;gap:8px;margin-top:10px;align-items:center';
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.value = '';
+    nameInput.style.cssText = 'flex:1;padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.06);color:inherit;font-family:inherit';
     let cur = '';
     const stack: { path: string; name: string }[] = [];
+
+    function setName(defaultPath: string) {
+      // prefill the filename part of the suggested server path, keep its dir
+      const name = defaultPath.split(/[\/]/).pop() ?? defaultPath;
+      nameInput.value = name;
+    }
 
     async function show(path: string | null, label?: string) {
       list.textContent = '';
@@ -244,13 +273,14 @@ function browseDialog(title: string, roots: { path: string; name: string }[], mo
         list.appendChild(up);
       }
       for (const d of j.dirs) addRow(d.path, d.name, true);
-      if (mode === 'folder') {
+      if (mode === 'folder' || mode === 'save') {
         const pick = document.createElement('div');
         pick.textContent = `✔ ${label ?? cur}`;
         pick.style.cssText = rowCss + 'opacity:.85';
         pick.onclick = () => done(cur);
         list.appendChild(pick);
-      } else {
+      }
+      if (mode !== 'folder') {
         for (const im of j.images) addRow(im.path, im.name, false, () => done(im.path));
       }
     }
@@ -275,13 +305,23 @@ function browseDialog(title: string, roots: { path: string; name: string }[], mo
     cancel.textContent = 'Cancel';
     cancel.onclick = () => done(null);
     const ok = document.createElement('button');
-    ok.textContent = mode === 'folder' ? 'Choose this folder' : 'Close';
-    ok.onclick = () => done(mode === 'folder' ? cur : null);
+    ok.textContent = mode === 'folder' ? 'Choose this folder' : mode === 'save' ? 'Save here' : 'Close';
+    ok.onclick = () => {
+      if (mode === 'save') {
+        const name = nameInput.value.trim();
+        if (!name || !cur) return done(null);
+        done(cur.endsWith('/') ? cur + name : cur + '/' + name);
+        return;
+      }
+      done(mode === 'folder' ? cur : null);
+    };
     for (const b of [cancel, ok]) {
       b.style.cssText = 'padding:4px 14px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.06);color:inherit;cursor:pointer';
     }
+    if (mode === 'save') nameRow.append(nameInput);
     foot.append(cancel, ok);
-    box.append(head, list, foot);
+    if (mode === 'save') box.append(head, list, nameRow, foot);
+    else box.append(head, list, foot);
     wrap.appendChild(box);
     document.body.appendChild(wrap);
     void show(null);
