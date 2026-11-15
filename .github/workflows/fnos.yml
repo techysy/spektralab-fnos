@@ -98,7 +98,7 @@ jobs:
           fnpack --help | head -3
 
       - name: Build fpk
-        working-directory: webui/fpk-dist/spektralab-fnos
+        working-directory: webui/fpk-dist/spektralab
         run: |
           set -euo pipefail
           rm -f spektralab-fnos.fpk
@@ -114,7 +114,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: spektralab-fnos-fpk-${{ matrix.variant }}
-          path: webui/fpk-dist/spektralab-fnos/SpektraLab-FnOS-*.fpk
+          path: webui/fpk-dist/spektralab/SpektraLab-FnOS-*.fpk
           if-no-files-found: error
           retention-days: 30
 
