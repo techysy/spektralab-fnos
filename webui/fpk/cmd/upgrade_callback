@@ -3,6 +3,8 @@
 set -e
 IMG_TAR="$TRIM_APPDEST/docker/spektralab-fnos.tar.gz"
 if [ -f "$IMG_TAR" ]; then
-  docker load -i "$IMG_TAR" || echo "docker load failed (image may come from a registry)" > "$TRIM_TEMP_LOGFILE"
+  docker load -i "$IMG_TAR" || {
+    echo "docker load failed (image may come from a registry)" > "$TRIM_TEMP_LOGFILE"
+  }
 fi
 exit 0

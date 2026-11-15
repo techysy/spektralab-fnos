@@ -17,6 +17,9 @@ dist="$root/dist"
 rm -rf "$here/fpk-dist"
 mkdir -p "$stage"
 cp -r "$here/fpk/." "$stage/"
+# wizard/install: fnpack wants every wizard entry to be a JSON form file;
+# an empty array means "no install-time questions".
+printf '[]' > "$stage/wizard/install"
 
 # the docker image travels inside the package (fnOS loads it in
 # install_callback; a registry pull is the alternative once published)
@@ -25,7 +28,7 @@ img="$dist/spektralab-fnos-webui-$version.tar.gz"
 cp "$img" "$stage/app/docker/spektralab-fnos.tar.gz"
 
 # the wizard stays empty for now (no install-time questions yet)
-mkdir -p "$stage/wizard/install"
+
 
 if command -v fnpack > /dev/null 2>&1; then
   (cd "$stage" && fnpack build)

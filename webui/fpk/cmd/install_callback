@@ -1,17 +1,17 @@
 #!/bin/bash
-# install_callback -- after install: load the engine image if the fnOS docker
-# project has not already pulled it from a registry.  The fpk ships the image
-# tar next to the compose file (webui/fpk/app/docker/spektralab-fnos.tar.gz);
-# `docker load` is idempotent, so an upgrade re-runs it harmlessly.
+# install_callback -- after install: load the engine image before the compose
+# project starts.  The fpk ships the image tar next to the compose file
+# (app/docker/spektralab-fnos.tar.gz); `docker load` is idempotent, so an
+# upgrade re-runs it harmlessly.  The compose file references
+# spektralab-fnos:${SPEKTRALAB_VERSION:-0.2.0}; loading the whole tar makes
+# that reference resolve regardless of which tag it carries.
 set -e
 IMG_TAR="$TRIM_APPDEST/docker/spektralab-fnos.tar.gz"
 if [ -f "$IMG_TAR" ]; then
-  # load unless the tag already exists locally
-  VERSION="$(grep -E '^version=' "$TRIM_APPDEST/../../manifest" 2>/dev/null | cut -d= -f2 | tr -d '"' || true)"
-  VERSION="${VERSION:-0.2.0}"
-  if ! docker image inspect "spektralab-fnos:$VERSION" > /dev/null 2>&1; then
-    echo "loading engine image spektralab-fnos:$VERSION"
-    docker load -i "$IMG_TAR"
-  fi
+  echo "loading engine image from $IMG_TAR"
+  docker load -i "$IMG_TAR" || {
+    echo "docker load failed" > "$TRIM_TEMP_LOGFILE"
+    exit 1
+  }
 fi
 exit 0

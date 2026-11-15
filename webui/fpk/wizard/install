@@ -1,0 +1,11 @@
+[
+  {
+    "stepTitle": "SpektraLab",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "安装后从桌面打开 SpektraLab。首次使用前请在 应用设置 → 授权目录 中授予照片文件夹的访问权限（或在应用内选择目录授权）。胶片模拟渲染会自动使用核显加速（Intel/AMD iGPU 透传时），无核显时回退 CPU 渲染。"
+      }
+    ]
+  }
+]

@@ -1,14 +1,25 @@
 # SpektraLab fnOS app -- engine host + bridge, one container.
 #
 # The fnOS app framework starts this compose project (config/resource
-# docker-project).  The bridge serves the WebUI over the unified gateway
-# unix socket (app.sock under the app's target dir, bind-mounted here) and,
-# when SPEKTRALAB_FNOS_PORT is set, directly on a port too.
+# docker-project) and injects TRIM_* environment variables (TRIM_API_TOKEN,
+# TRIM_APPDEST, TRIM_PKGVAR, TRIM_UID, ...) into the container automatically.
 #
-# GPU: the iGPU is passed through with /dev/dri (render nodes); the
-# container's mesa-vulkan-drivers (ANV) picks it up and the engine renders on
-# it.  On a GPU-less box the same image falls back to Mesa lavapipe (CPU).
-# The app user already runs in the video/render groups (config/privilege).
+# Networking: the bridge serves the WebUI on the unified-gateway unix socket
+# (app.sock under the app's target dir, bind-mounted at /sock).  fnOS forwards
+# /app/spektralab-fnos there after checking the NAS login session; the app
+# reads X-Trim-Userid / X-Trim-Isadmin per request.  No TCP port is exposed
+# under fnOS (SPEKTRALAB_FNOS_PORT=0).  A healthcheck probes the socket.
+#
+# Files: photo roots are authorized at runtime through the trim open API
+# (shared grants + per-user grants, ACL-checked per request).  The container
+# still needs to SEE those paths, so the NAS storage volumes are mounted
+# read-only at their real paths (/vol1, /vol02, ...).  Path validation never
+# trusts the mount alone: bridge.py clamps every path to trim-reported roots
+# and gates each user through trim.file.checkUserACL.  Exported files land in
+# /data (the app's var dir, TRIM_PKGVAR) -- writable, app-owned.
+#
+# GPU: /dev/dri passthrough + video/render groups; Mesa ANV picks up the iGPU
+# (e.g. Intel UHD 730) and the engine renders on it, lavapipe is the fallback.
 
 services:
   spektralab:
@@ -16,38 +27,38 @@ services:
     container_name: spektralab-fnos
     restart: unless-stopped
     devices:
-      - /dev/dri:/dev/dri          # iGPU passthrough (Intel UHD 730 et al.)
+      - /dev/dri:/dev/dri          # iGPU passthrough
     group_add:
       - video
       - render
     environment:
-      # unified gateway socket, inside the app target dir bind mount
+      # unified gateway socket (created in the app target dir, bind-mounted here)
       SPEKTRALAB_FNOS_SOCKET: /sock/app.sock
-      # direct port is OFF under fnOS (the gateway fronts everything);
-      # set SPEKTRALAB_FNOS_PORT in .env for a standalone/docker deploy
-      SPEKTRALAB_FNOS_PORT: ${SPEKTRALAB_FNOS_PORT:-0}
-      # authorized photo roots for standalone mode (fnOS app mode gets these
-      # from the trim API: shared grants + the user's own authorized folders)
-      SPEKTRALAB_PHOTOS_ROOTS: ${SPEKTRALAB_PHOTOS_ROOTS:-/photos}
-      # 0 = let the engine pick the first Vulkan device (the iGPU when passed
-      # through, lavapipe otherwise); set 0/1... to pin a specific one
-      SPEKTRALAB_DEVICE: ${SPEKTRALAB_DEVICE:-}
-      TRIM_API_TOKEN: ${TRIM_API_TOKEN:-}
-      TRIM_APPNAME: ${TRIM_APPNAME:-spektralab-fnos}
-      TRIM_UID: ${TRIM_UID:-}
+      # no TCP port under fnOS -- the gateway fronts everything
+      SPEKTRALAB_FNOS_PORT: 0
+      # fnOS mode: the bridge detects the trim socket and queries roots/ACL
+      # through it.  Extra env roots are appended (usually empty).
+      SPEKTRALAB_PHOTOS_ROOTS: ""
+      SPEKTRALAB_DEVICE: ""
       SPEKTRALAB_FNOS_VERSION: ${SPEKTRALAB_VERSION:-0.2.0}
+      # TRIM_API_TOKEN / TRIM_APPNAME / TRIM_UID / TRIM_APPDEST / TRIM_PKGVAR
+      # are injected by the fnOS app framework; nothing to set here.
     volumes:
       # the gateway socket the fnOS app framework forwards /app/spektralab-fnos to
-      - ${TRIM_APPDEST:-.}/app.sock:/sock/app.sock
-      # engine data: sidecar-less stores, inbox uploads, host logs
-      - ${TRIM_PKGVAR:-./data}:/data
-      # authorized photo roots in standalone mode; under fnOS the trim ACL
-      # governs real user paths, so mount what you grant
-      - ${SPEKTRALAB_PHOTOS_DIR:-./photos}:/photos
+      - ${TRIM_APPDEST}/app.sock:/sock
+      # app data (stores, inbox uploads, exports): TRIM_PKGVAR points at
+      # /vol{n}/@appdata/{appname} -- writable and persistent across upgrades
+      - ${TRIM_PKGVAR}:/data
+      # NAS storage volumes at their REAL paths: trim-granted photo paths are
+      # /vol1/... or /vol02/... and must exist unchanged inside the container.
+      # Read-only: the engine only reads photographs; exports go to /data.
+      - /vol1:/vol1:ro
+      - /vol02:/vol02:ro
+      # trim open-API socket: the bridge calls it per request for roots + ACL
+      - /var/run/trim_open_gateway_apiscope.socket:/var/run/trim_open_gateway_apiscope.socket:ro
     healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8080/api/hello', timeout=5)"]
+      # gateway socket mode: probe through the unix socket via python http.client
+      test: ["CMD", "python3", "-c", "import http.client, socket; s=socket.socket(socket.AF_UNIX); s.settimeout(5); s.connect('/sock/app.sock'); c=http.client.HTTPConnection('localhost'); c.sock=s; c.request('GET','/api/hello'); r=c.getresponse(); r.read(); raise SystemExit(0 if r.status==200 else 1)"]
       interval: 30s
       timeout: 10s
       retries: 3
-      # the healthcheck hits the TCP listener; keep one alive even under fnOS
-      # (bridge.py opens both when the port is set)
