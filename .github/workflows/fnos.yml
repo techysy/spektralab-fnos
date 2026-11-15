@@ -87,11 +87,6 @@ jobs:
           SPEKTRALAB_WWW_DIST: ${{ github.workspace }}/payload/webui/frontend/dist
         run: bash webui/pack-fpk.sh
 
-      - name: Stage the fpk project for this variant
-        env:
-          FPK_VARIANT: ${{ matrix.variant }}
-        run: bash webui/pack-fpk.sh
-
       - name: Download fnpack (pinned)
         env:
           FNPACK_VERSION: "1.2.1"
