@@ -29,20 +29,30 @@ services:
     devices:
       - /dev/dri:/dev/dri          # iGPU passthrough
     group_add:
-      - video
-      - render
+      # Debian-stable GIDs (video=44, render=105): compose's named group_add
+      # resolves on a path that misses NSS-only entries on some fnOS builds.
+      - "44"
+      - "105"
     environment:
       # unified gateway socket (created in the app target dir, bind-mounted here)
       SPEKTRALAB_FNOS_SOCKET: /sock/app.sock
-      # no TCP port under fnOS -- the gateway fronts everything
-      SPEKTRALAB_FNOS_PORT: 0
+      # the bridge listens on the manifest's service_port (fnOS injects it);
+      # the ui/config entry opens http://<nas>:$TRIM_SERVICE_PORT/
+      SPEKTRALAB_FNOS_PORT: ${TRIM_SERVICE_PORT:-8777}
       # fnOS mode: the bridge detects the trim socket and queries roots/ACL
-      # through it.  Extra env roots are appended (usually empty).
-      SPEKTRALAB_PHOTOS_ROOTS: ""
+      # through it (needs TRIM_API_TOKEN in the container env).  Until the
+      # framework injects it into compose containers, these env roots keep the
+      # photo library browsable: the two storage volumes are mounted read-only
+      # below at their real paths, per-user ACL then applies via the gateway.
+      SPEKTRALAB_PHOTOS_ROOTS: "/vol1;/vol02"
       SPEKTRALAB_DEVICE: ""
       SPEKTRALAB_FNOS_VERSION: ${SPEKTRALAB_VERSION:-0.2.0}
       # TRIM_API_TOKEN / TRIM_APPNAME / TRIM_UID / TRIM_APPDEST / TRIM_PKGVAR
       # are injected by the fnOS app framework; nothing to set here.
+    ports:
+      # port-service entry: publish the manifest's service port (TRIM_SERVICE_PORT
+      # is injected by the fnOS framework; 8777 matches manifest.service_port)
+      - "${TRIM_SERVICE_PORT:-8777}:${TRIM_SERVICE_PORT:-8777}"
     volumes:
       # the gateway socket the fnOS app framework forwards /app/spektralab-fnos to
       - ${TRIM_APPDEST}/app.sock:/sock

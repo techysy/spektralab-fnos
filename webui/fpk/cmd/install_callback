@@ -2,16 +2,34 @@
 # install_callback -- after install: load the engine image before the compose
 # project starts.  The fpk ships the image tar next to the compose file
 # (app/docker/spektralab-fnos.tar.gz); `docker load` is idempotent, so an
-# upgrade re-runs it harmlessly.  The compose file references
-# spektralab-fnos:${SPEKTRALAB_VERSION:-0.2.0}; loading the whole tar makes
-# that reference resolve regardless of which tag it carries.
+# upgrade re-runs it harmlessly.
+#
+# Lifecycle scripts run as the package user (config/privilege run-as=package),
+# which reaches the docker socket through join-groups: docker.  If the load
+# still fails but the compose's image reference already resolves locally
+# (pre-loaded or pulled), treat it as done instead of failing the install.
 set -e
+DOCKER="$(command -v docker || echo /usr/bin/docker)"
 IMG_TAR="$TRIM_APPDEST/docker/spektralab-fnos.tar.gz"
+IMG_REF="spektralab-fnos:${SPEKTRALAB_VERSION:-0.2.0}"
+
+image_present() {
+  "$DOCKER" image inspect "$1" > /dev/null 2>&1
+}
+
 if [ -f "$IMG_TAR" ]; then
-  echo "loading engine image from $IMG_TAR"
-  docker load -i "$IMG_TAR" || {
-    echo "docker load failed" > "$TRIM_TEMP_LOGFILE"
-    exit 1
-  }
+  if image_present "$IMG_REF"; then
+    echo "image $IMG_REF already present"
+  else
+    echo "loading engine image from $IMG_TAR"
+    if ! "$DOCKER" load -i "$IMG_TAR"; then
+      if image_present "$IMG_REF"; then
+        echo "docker load failed but $IMG_REF is present; continuing"
+      else
+        { echo "docker load failed and $IMG_REF is not present"; "$DOCKER" load -i "$IMG_TAR" 2>&1 | tail -5; } > "$TRIM_TEMP_LOGFILE"
+        exit 1
+      fi
+    fi
+  fi
 fi
 exit 0

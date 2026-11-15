@@ -1,10 +1,16 @@
 #!/bin/bash
-# upgrade_callback -- after upgrade: reload the engine image for the new version.
+# upgrade_callback -- after upgrade: reload the engine image for the new
+# version.  Same fallback policy as install_callback: a failed load is fatal
+# only when the compose's image reference does not already resolve locally.
 set -e
+DOCKER="$(command -v docker || echo /usr/bin/docker)"
 IMG_TAR="$TRIM_APPDEST/docker/spektralab-fnos.tar.gz"
-if [ -f "$IMG_TAR" ]; then
-  docker load -i "$IMG_TAR" || {
-    echo "docker load failed (image may come from a registry)" > "$TRIM_TEMP_LOGFILE"
+IMG_REF="spektralab-fnos:${SPEKTRALAB_VERSION:-0.2.0}"
+
+if [ -f "$IMG_TAR" ] && ! "$DOCKER" image inspect "$IMG_REF" > /dev/null 2>&1; then
+  "$DOCKER" load -i "$IMG_TAR" || {
+    echo "docker load failed and $IMG_REF is not present" > "$TRIM_TEMP_LOGFILE"
+    exit 1
   }
 fi
 exit 0

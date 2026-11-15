@@ -17,9 +17,9 @@ dist="$root/dist"
 rm -rf "$here/fpk-dist"
 mkdir -p "$stage"
 cp -r "$here/fpk/." "$stage/"
-# wizard/install: fnpack wants every wizard entry to be a JSON form file;
-# an empty array means "no install-time questions".
-printf '[]' > "$stage/wizard/install"
+# wizard/install must be a NON-EMPTY JSON form file: the app center's wizard
+# parser nil-derefs on an empty array (code 10111). webui/fpk/wizard/install
+# carries one tips step; keep it as-is here, never overwrite it.
 
 # the docker image travels inside the package (fnOS loads it in
 # install_callback; a registry pull is the alternative once published)
