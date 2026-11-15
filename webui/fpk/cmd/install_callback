@@ -1,17 +1,14 @@
 #!/bin/bash
-# install_callback -- after install/upgrade:
-#   1. make the compose's image reference (spektralab-fnos:webui, a stable
-#      local tag decoupled from app versions) resolve from the bundled tar;
-#   2. force-recreate the compose project so the container always binds the
-#      CURRENT app dir (a stale container binds a deleted inode after
-#      uninstall/reinstall and the gateway socket vanishes).
-# The framework injects TRIM_* env; the docker socket is reachable through
-# join-groups: docker (config/privilege).
+# install_callback -- after install: make the compose's image reference
+# (spektralab-fnos:webui, a stable local tag decoupled from app versions)
+# resolve from the bundled tar.  The framework brings the compose project up
+# itself at install; cmd/main start also runs `compose up -d` as a safety
+# net.  No compose calls here: a second compose racer just conflicts on the
+# container name and rolls the whole install back.
 set -e
 DOCKER="$(command -v docker || echo /usr/bin/docker)"
 IMG_TAR="$TRIM_APPDEST/docker/spektralab-fnos.tar.gz"
 IMG_REF="spektralab-fnos:webui"
-COMPOSE_FILE="$TRIM_APPDEST/docker/docker-compose.yaml"
 
 image_present() {
   "$DOCKER" image inspect "$1" > /dev/null 2>&1
@@ -20,7 +17,7 @@ image_present() {
 if [ -f "$IMG_TAR" ]; then
   # ALWAYS load on install: the bundled tar is the image this fpk was built
   # with, and the stable tag may still point at an older build left behind by
-  # a previous install.  (upgrade_callback has the same contract.)
+  # a previous install.
   echo "loading engine image from $IMG_TAR"
   LOADED="$("$DOCKER" load -i "$IMG_TAR" 2>&1 | grep -oE 'spektralab-fnos:[^ ]+' | head -1 || true)"
   if [ -z "$LOADED" ] || ! image_present "$LOADED"; then
@@ -30,14 +27,7 @@ if [ -f "$IMG_TAR" ]; then
   "$DOCKER" tag "$LOADED" "$IMG_REF"
   echo "tagged $LOADED -> $IMG_REF"
 else
-  echo "$IMG_TAR missing and $IMG_REF not guaranteed" > "${TRIM_TEMP_LOGFILE:-/dev/null}"
-fi
-
-if [ -f "$COMPOSE_FILE" ]; then
-  echo "recreating compose project"
-  "$DOCKER" compose -f "$COMPOSE_FILE" up -d --force-recreate \
-    || { echo "compose force-recreate failed" > "${TRIM_TEMP_LOGFILE:-/dev/null}"; exit 1; }
-else
-  echo "no compose file at $COMPOSE_FILE; skipping recreate" > "${TRIM_TEMP_LOGFILE:-/dev/null}"
+  echo "$IMG_TAR missing; expecting $IMG_REF to already exist locally" > "${TRIM_TEMP_LOGFILE:-/dev/null}"
+  image_present "$IMG_REF" || exit 1
 fi
 exit 0

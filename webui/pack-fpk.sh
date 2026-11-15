@@ -11,7 +11,8 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$here/.." && pwd)"
 version="$(tr -d ' \r\n' < "$root/VERSION")"
-stage="$here/fpk-dist/spektralab-fnos"
+appname="$(grep -E '^appname=' "$here/fpk/manifest" | cut -d= -f2 | tr -d ' \r')"
+stage="$here/fpk-dist/$appname"
 dist="$root/dist"
 
 rm -rf "$here/fpk-dist"

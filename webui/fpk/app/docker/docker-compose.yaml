@@ -24,6 +24,7 @@
 services:
   spektralab:
     image: spektralab-fnos:webui
+    pull_policy: never   # the image ships inside the fpk; never hit a registry
     container_name: spektralab-fnos
     restart: unless-stopped
     devices:

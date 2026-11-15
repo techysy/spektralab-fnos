@@ -1,5 +1,13 @@
 #!/bin/bash
-# uninstall_callback -- after removal: the framework tore the compose project
-# down. Optionally remove the engine image (keep it: reinstalls are common and
-# the tar load takes a minute; images are not user data).
+# uninstall_callback -- after removal: tear the compose project down.
+# The framework's docker-project teardown does not run as a docker-authorized
+# user, so containers leaked across uninstall/reinstall and the next install
+# died on a name conflict (code 10266).  compose down here is idempotent.
+set -e
+DOCKER="$(command -v docker || echo /usr/bin/docker)"
+COMPOSE_FILE="$TRIM_APPDEST/docker/docker-compose.yaml"
+if [ -f "$COMPOSE_FILE" ]; then
+  "$DOCKER" compose -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null \
+    || "$DOCKER" rm -f spektralab-fnos 2>/dev/null || true
+fi
 exit 0

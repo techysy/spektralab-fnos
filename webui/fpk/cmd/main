@@ -33,6 +33,9 @@ start)
   exit 0
   ;;
 stop)
+  # the framework stops the compose project itself; this is a belt-and-suspenders
+  # down so nothing leaks across uninstall/reinstall cycles
+  "$DOCKER" compose -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
   exit 0
   ;;
 status)
