@@ -12,7 +12,7 @@ declare global {
   interface Window { __SPK_BASE__?: string }
 }
 const base = () => window.__SPK_BASE__ ?? '/';
-const url = (p: string) => `${base()}${p}`;
+const url = (p: string) => `${base()}api/${p}`;
 
 type DirListing = { ok: boolean; path: string; dirs: { path: string; name: string }[]; images: FileEntry[] };
 
@@ -114,13 +114,25 @@ export function bridgePlatform(): Platform {
       return () => window.removeEventListener('message', h);
     },
     onDrop: (cb) => {
-      // Browser drops carry File objects, not paths: open the drop dialog.
+      // Browser drops carry File objects, not paths: upload to the inbox,
+      // then open the stored NAS paths like any photograph.
       const over = (e: DragEvent) => e.preventDefault();
       const drop = (e: DragEvent) => {
         e.preventDefault();
         const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => IMG_EXT.test(f.name));
-        if (files.length) cb(['__upload__']);
-        if (files.length) queueUploads(files);
+        if (!files.length) return;
+        void (async () => {
+          const paths: string[] = [];
+          for (const f of files) {
+            try {
+              const r = await uploadToInbox(f);
+              paths.push(r.path);
+            } catch (err) {
+              void console.error('upload failed:', err);
+            }
+          }
+          if (paths.length) cb(paths);
+        })();
       };
       window.addEventListener('dragover', over);
       window.addEventListener('drop', drop);
