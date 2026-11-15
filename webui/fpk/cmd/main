@@ -2,15 +2,16 @@
 # cmd/main -- start/stop/status for the SpektraLab fnOS app.
 #
 # The service runs as a Docker Compose project (config/resource
-# docker-project): the app center brings the project up at install and
-# starts/stops it at the framework level -- cmd/main only reports and waits.
+# docker-project).  On this fnOS build the framework does not re-run compose
+# at start, so start ensures the project is up itself (idempotent: compose
+# recreates only when the file changed) and waits for the bridge's port.
 # The WebUI opens at http://<nas>:8777 (manifest service_port, type: url
-# entry, same pattern as the other fnOS apps).
+# fallback entry; the primary entry is the unified-gateway iframe).
 
 DOCKER="$(command -v docker || echo /usr/bin/docker)"
 APP_NAME="${TRIM_APPNAME:-spektralab-fnos}"
 APP_DIR="${TRIM_APPDEST:-/var/apps/${APP_NAME}}"
-COMPOSE_DIR="${APP_DIR}/docker"
+COMPOSE_FILE="${APP_DIR}/docker/docker-compose.yaml"
 PORT="${TRIM_SERVICE_PORT:-8777}"
 
 container_state() {
@@ -19,7 +20,9 @@ container_state() {
 
 case "$1" in
 start)
-  # compose is started by the framework; wait for the bridge to answer.
+  if [ -f "$COMPOSE_FILE" ]; then
+    "$DOCKER" compose -f "$COMPOSE_FILE" up -d 2>>"${TRIM_TEMP_LOGFILE:-/dev/null}" || true
+  fi
   for _ in $(seq 1 30); do
     if curl -sf --max-time 2 "http://127.0.0.1:${PORT}/api/hello" > /dev/null 2>&1; then
       exit 0

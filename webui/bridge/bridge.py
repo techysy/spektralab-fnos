@@ -419,9 +419,10 @@ class Handler(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
     server_version = 'spektralab-fnos-bridge'
 
-    # The fnOS unified gateway forwards /app/<appname>/... verbatim; the app
-    # name prefix is stripped here so every route below stays prefix-free.
-    GATEWAY_PREFIX = '/app/' + os.environ.get('TRIM_APPNAME', 'spektralab-fnos').strip()
+    # The fnOS unified gateway forwards /app/<gatewayPrefix>/... verbatim; the
+    # prefix is stripped here so every route below stays prefix-free.  Kept in
+    # sync with app/ui/config's gatewayPrefix (/app/spektralab).
+    GATEWAY_PREFIX = os.environ.get('SPEKTRALAB_GATEWAY_PREFIX', '/app/spektralab').strip()
 
     def _route(self):
         p = self.path

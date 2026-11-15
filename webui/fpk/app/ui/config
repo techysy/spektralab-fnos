@@ -5,9 +5,9 @@
       "icon": "images/icon_{0}.png",
       "type": "iframe",
       "protocol": "",
-      "gatewayPrefix": "/app/spektralab-fnos",
+      "gatewayPrefix": "/app/spektralab",
       "gatewaySocket": "app.sock",
-      "url": "/app/spektralab-fnos/",
+      "url": "/app/spektralab/",
       "allUsers": true
     }
   }

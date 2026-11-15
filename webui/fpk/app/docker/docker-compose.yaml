@@ -36,8 +36,9 @@ services:
     environment:
       # unified gateway socket, created inside the mounted app target dir
       SPEKTRALAB_FNOS_SOCKET: /host-target/app.sock
-      # the bridge strips /app/<appname> from gateway-forwarded requests
-      TRIM_APPNAME: ${TRIM_APPNAME:-spektralab-fnos}
+      # the bridge strips this prefix from gateway-forwarded requests
+      # (keep in sync with app/ui/config gatewayPrefix)
+      SPEKTRALAB_GATEWAY_PREFIX: /app/spektralab
       # the bridge listens on the manifest's service_port (fnOS injects it);
       # the ui/config entry opens http://<nas>:$TRIM_SERVICE_PORT/
       SPEKTRALAB_FNOS_PORT: ${TRIM_SERVICE_PORT:-8777}

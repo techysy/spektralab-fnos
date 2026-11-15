@@ -1,5 +1,5 @@
 appname=spektralab-fnos
-version=0.2.3
+version=0.2.4
 display_name=SpektraLab
 desc=胶片暗房引擎：按物理过程建模的胶片模拟与放大印相。打开 RAW 照片，选择胶片与相纸，调参后导出 TIFF/JPEG。基于 SpektraLab 引擎（GPL-3.0）。
 maintainer=techysy

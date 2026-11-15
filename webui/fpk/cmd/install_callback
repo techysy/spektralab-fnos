@@ -1,49 +1,43 @@
 #!/bin/bash
-# install_callback -- after install/upgrade: make sure the compose's image
-# reference (spektralab-fnos:webui, a stable local tag decoupled from app
-# versions) resolves before the framework brings the project up.
-#
-# The fpk ships the image tar next to the compose file
-# (app/docker/spektralab-fnos.tar.gz).  `docker load` restores whatever tag
-# the tar carries (webui-<appver>); we retag it to the stable reference.
-#
-# Lifecycle scripts run as the package user (config/privilege
-# run-as=package), which reaches the docker socket through
-# join-groups: docker.
+# install_callback -- after install/upgrade:
+#   1. make the compose's image reference (spektralab-fnos:webui, a stable
+#      local tag decoupled from app versions) resolve from the bundled tar;
+#   2. force-recreate the compose project so the container always binds the
+#      CURRENT app dir (a stale container binds a deleted inode after
+#      uninstall/reinstall and the gateway socket vanishes).
+# The framework injects TRIM_* env; the docker socket is reachable through
+# join-groups: docker (config/privilege).
 set -e
 DOCKER="$(command -v docker || echo /usr/bin/docker)"
 IMG_TAR="$TRIM_APPDEST/docker/spektralab-fnos.tar.gz"
 IMG_REF="spektralab-fnos:webui"
+COMPOSE_FILE="$TRIM_APPDEST/docker/docker-compose.yaml"
 
 image_present() {
   "$DOCKER" image inspect "$1" > /dev/null 2>&1
 }
 
-if image_present "$IMG_REF"; then
-  echo "image $IMG_REF already present"
-  exit 0
+if [ -f "$IMG_TAR" ]; then
+  # ALWAYS load on install: the bundled tar is the image this fpk was built
+  # with, and the stable tag may still point at an older build left behind by
+  # a previous install.  (upgrade_callback has the same contract.)
+  echo "loading engine image from $IMG_TAR"
+  LOADED="$("$DOCKER" load -i "$IMG_TAR" 2>&1 | grep -oE 'spektralab-fnos:[^ ]+' | head -1 || true)"
+  if [ -z "$LOADED" ] || ! image_present "$LOADED"; then
+    echo "docker load did not yield a usable image" > "${TRIM_TEMP_LOGFILE:-/dev/null}"
+    exit 1
+  fi
+  "$DOCKER" tag "$LOADED" "$IMG_REF"
+  echo "tagged $LOADED -> $IMG_REF"
+else
+  echo "$IMG_TAR missing and $IMG_REF not guaranteed" > "${TRIM_TEMP_LOGFILE:-/dev/null}"
 fi
 
-if [ ! -f "$IMG_TAR" ]; then
-  echo "$IMG_TAR missing and $IMG_REF not present" > "${TRIM_TEMP_LOGFILE:-/dev/null}"
-  exit 1
-fi
-
-echo "loading engine image from $IMG_TAR"
-LOADED="$("$DOCKER" load -i "$IMG_TAR" 2>&1 | grep -oE 'spektralab-fnos:[^ ]+' | head -1 || true)"
-if [ -z "$LOADED" ] || ! image_present "$LOADED"; then
-  echo "docker load did not yield a usable image" > "${TRIM_TEMP_LOGFILE:-/dev/null}"
-  exit 1
-fi
-"$DOCKER" tag "$LOADED" "$IMG_REF"
-echo "tagged $LOADED -> $IMG_REF"
-
-# Recreate the compose project so the container always mounts the CURRENT
-# app dir (a stale container binds a deleted inode after uninstall/reinstall
-# and the gateway socket vanishes).  Runs with the framework's TRIM_* env.
-if [ -f "$TRIM_APPDEST/docker/docker-compose.yaml" ]; then
+if [ -f "$COMPOSE_FILE" ]; then
   echo "recreating compose project"
-  "$DOCKER" compose -f "$TRIM_APPDEST/docker/docker-compose.yaml" up -d --force-recreate \
-    || echo "compose force-recreate failed (framework will start the project)" > "${TRIM_TEMP_LOGFILE:-/dev/null}"
+  "$DOCKER" compose -f "$COMPOSE_FILE" up -d --force-recreate \
+    || { echo "compose force-recreate failed" > "${TRIM_TEMP_LOGFILE:-/dev/null}"; exit 1; }
+else
+  echo "no compose file at $COMPOSE_FILE; skipping recreate" > "${TRIM_TEMP_LOGFILE:-/dev/null}"
 fi
 exit 0
