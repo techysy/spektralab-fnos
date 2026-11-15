@@ -107,7 +107,7 @@ jobs:
           [ -n "$VERSION" ] || { echo "ERROR: no version in manifest"; exit 1; }
           VARIANT="$(echo '${{ matrix.variant }}' | sed 's/^\(.\)/\U\1/')"
           OUT="SpektraLab-FnOS-${VARIANT}-${VERSION}-x86.fpk"
-          mv spektralab-fnos.fpk "$OUT"
+          mv spektralab.fpk "$OUT"
           ls -lh "$OUT"
           echo "FPK_NAME=$OUT" >> "$GITHUB_ENV"
 
