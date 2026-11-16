@@ -184,9 +184,11 @@ jobs:
         run: |
           set -euo pipefail
           ls -lh rel/
-          # one checksum file for everything: the names are self-describing now
+          # one checksum file for everything: the names are self-describing now.
+          # no bare host bundle on the release: fnOS users use the fpk / webui
+          # image; the host bundle travels inside the fpk payload
           ( cd rel && sha256sum SpektraLab-FnOS-*.fpk spektralab-fnos-*.tar.gz > SHA256SUMS )
           N=$(ls rel/SpektraLab-FnOS-*.fpk rel/spektralab-fnos-*.tar.gz rel/SHA256SUMS | wc -l)
-          [ "$N" -ge 6 ] || { echo "ERROR: expected >=6 files (2 fpk + 2 images + host bundle + sums), found $N"; exit 1; }
+          [ "$N" -ge 4 ] || { echo "ERROR: expected >=4 files (2 fpk + 1 image + sums), found $N"; exit 1; }
           gh release upload "${{ github.ref_name }}" rel/* --clobber
           echo "attached to release ${{ github.ref_name }}"

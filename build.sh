@@ -82,13 +82,13 @@ docker run -i --rm --entrypoint python3 \
   /opt/smoke.py --host /opt/spektralab/spektralab-host --resources /opt/spektralab/engine
 
 # 5) artifacts
-# naming: spektralab-fnos-<version>-docker-headless.tar.gz (docker image),
-#         spektralab-fnos-<version>-host-linux-x64.tar.gz (bare host bundle)
+# naming: spektralab-fnos-<version>-docker-headless.tar.gz (docker image)
+# (the bare host bundle ships only inside the fpk / payload artifact -- not
+# published to the Release: fnOS users have no use for it without the bridge)
 mkdir -p "$dist"
 docker save "spektralab-fnos:$image_tag" | gzip > "$dist/spektralab-fnos-$version-docker-headless.tar.gz"
-tar -C upstream/build -czf "$dist/spektralab-fnos-$version-host-linux-x64.tar.gz" host-linux-x64
 cp docker/Dockerfile "$dist/Dockerfile.txt"
-( cd "$dist" && sha256sum "spektralab-fnos-$version-docker-headless.tar.gz" "spektralab-fnos-$version-host-linux-x64.tar.gz" > SHA256SUMS )
+( cd "$dist" && sha256sum "spektralab-fnos-$version-docker-headless.tar.gz" > SHA256SUMS )
 echo "==> fnOS artifacts in $dist:"
 ls -la "$dist"
 cat "$dist/SHA256SUMS"
