@@ -191,4 +191,10 @@ jobs:
           N=$(ls rel/SpektraLab-FnOS-*.fpk rel/spektralab-fnos-*.tar.gz rel/SHA256SUMS | wc -l)
           [ "$N" -ge 4 ] || { echo "ERROR: expected >=4 files (2 fpk + 1 image + sums), found $N"; exit 1; }
           gh release upload "${{ github.ref_name }}" rel/* --clobber
+          # gate: the release body must carry a Full Changelog link (compare
+          # between tags, commits for the first tag) -- hand-written notes that
+          # replaced the generate-notes placeholder used to drop it
+          BODY="$(gh release view "${{ github.ref_name }}" --json body --jq '.body')"
+          grep -q "Full Changelog" <<<"$BODY" \
+            || echo "WARN: release body lacks a Full Changelog link -- keep it when rewriting the notes"
           echo "attached to release ${{ github.ref_name }}"
