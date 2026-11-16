@@ -102,13 +102,14 @@ jobs:
           APPNAME="$(grep -E '^appname=' manifest | cut -d= -f2 | tr -d ' \r')"
           [ "$APPNAME" = "spektralab" ] || { echo "ERROR: appname must stay 'spektralab' (gateway path /app/spektralab + data dir are derived from it)"; exit 1; }
           VERSION="$(grep -E '^version=' manifest | cut -d= -f2 | tr -d ' \r')"
-          [ "$VERSION" = "$(tr -d ' \r\n' < ../../VERSION)" ] || { echo "ERROR: manifest version ($VERSION) != VERSION file"; exit 1; }
+          # fpk-dist/spektralab -> repo root is three levels up (fpk-dist/spektralab/../.. = webui)
+          [ "$VERSION" = "$(tr -d ' \r\n' < ../../../VERSION)" ] || { echo "ERROR: manifest version ($VERSION) != repo-root VERSION ($(tr -d ' \r\n' < ../../../VERSION 2>/dev/null))"; exit 1; }
           echo "== desc carries exactly one 【】 prefix =="
           DESC="$(grep -E '^desc=' manifest)"
           N=$(printf '%s' "$DESC" | grep -o '【' | wc -l)
           [ "$N" -eq 1 ] || { echo "ERROR: desc has $N 【】 groups (expected 1, the variant prefix)"; exit 1; }
           echo "== wizard/install is a non-empty form (app center 10111 on empty) =="
-          python3 -c "import json,sys; a=json.load(open('wizard/install')); assert isinstance(a,list) and len(a)>0, 'wizard/install must be a non-empty array'"
+          python3 -c "import json,sys; a=json.load(open('wizard/install', encoding='utf-8')); assert isinstance(a,list) and len(a)>0, 'wizard/install must be a non-empty array'"
           echo "== lifecycle scripts present and parseable =="
           for s in main install_callback uninstall_callback upgrade_callback; do
             [ -f "cmd/${s}" ] || { echo "ERROR: cmd/${s} missing"; exit 1; }
