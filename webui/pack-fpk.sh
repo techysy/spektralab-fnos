@@ -39,9 +39,14 @@ variant="${FPK_VARIANT:-window}"
 case "$variant" in
   tab)
     cp "$here/fpk/app/ui/config.tab" "$stage/app/ui/config"
+    # strip the template's own 【…】 prefix first, then add the variant one --
+    # sed-appending to a desc that already carries 【原生版】 produced
+    # 【窗口版·原生】【原生版】... in the shipped fpk (0.3.0)
+    sed -i -E 's/^desc=【[^】]*】/desc=/' "$stage/manifest"
     sed -i 's/^desc=/desc=【标签页版】/' "$stage/manifest"
     ;;
   window)
+    sed -i -E 's/^desc=【[^】]*】/desc=/' "$stage/manifest"
     sed -i 's/^desc=/desc=【窗口版·原生】/' "$stage/manifest"
     ;;
   *) echo "unknown FPK_VARIANT '$variant'" >&2; exit 1 ;;

@@ -64,6 +64,13 @@ start)
 stop)
   if pid_alive; then
     kill "$(cat "$PID_FILE")" 2>/dev/null || true
+    # wait for the bridge to actually exit before returning: an immediate
+    # start after stop raced the port release (fnOS lifecycle calls both)
+    for _ in $(seq 1 10); do
+      pid_alive || break
+      sleep 0.5
+    done
+    pid_alive && kill -9 "$(cat "$PID_FILE")" 2>/dev/null || true
   fi
   # the bridge is the parent of spektralab-host; if the bridge died hard,
   # reap the host by its exact resources path

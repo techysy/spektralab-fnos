@@ -57,6 +57,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import socket
 import socketserver
 import struct
@@ -222,7 +223,7 @@ class HostProcess:
                 msg = json.loads(header.decode('utf-8'))
                 if 'event' in msg:
                     for q in tuple(self.subscribers):
-                        q.append(msg)
+                        q.put(msg)
                 else:
                     q = self.pending.pop(msg.get('id'), None)
                     if q is not None:
@@ -232,7 +233,8 @@ class HostProcess:
         self.note('host stdout closed')
 
     def subscribe(self):
-        q = []
+        from queue import Queue
+        q = Queue()
         self.subscribers.add(q)
         return q
 
@@ -382,7 +384,19 @@ def _inbox_root():
     return INBOX
 
 
+# upload guards: the declared size comes from the client, so both a per-file
+# cap and a whole-volume disk floor are enforced -- an unbounded writer could
+# fill the NAS data volume (the inbox lives on @appdata).
+UPLOAD_MAX_FILE = 2 * 2**30          # 2 GiB per file (raw + 16-bit TIFF scale)
+INBOX_DISK_FLOOR = 2 * 2**30         # refuse new uploads when free space < 2 GiB
+
+
 def upload_init(name, size):
+    size = int(size or 0)
+    if size > UPLOAD_MAX_FILE:
+        raise ApiError(413, f'file too large: {size} > {UPLOAD_MAX_FILE} bytes')
+    if shutil.disk_usage(INBOX).free - max(size, 0) < INBOX_DISK_FLOOR:
+        raise ApiError(507, 'inbox disk is nearly full; clean up the app data dir')
     safe = re.sub(r'[^\w.\- ()\[\]]+', '_', os.path.basename(name or 'photo')) or 'photo'
     stem, ext = os.path.splitext(safe)
     ext = ext if ext.lower().lstrip('.') in IMAGE_EXTENSIONS else '.bin'
@@ -390,7 +404,7 @@ def upload_init(name, size):
     final = os.path.join(_inbox_root(), f'{stem}_{uid}{ext}')
     partial = final + '.partial'
     with uploads_lock:
-        uploads[uid] = {'path': partial, 'final': final, 'size': int(size or 0), 'got': 0, 'name': safe}
+        uploads[uid] = {'path': partial, 'final': final, 'size': size, 'got': 0, 'name': safe}
     return uid, final
 
 
@@ -682,6 +696,7 @@ class Handler(BaseHTTPRequestHandler):
     # -- events
 
     def _sse(self):
+        from queue import Empty
         q = HOST.subscribe()
         try:
             self.send_response(200)
@@ -693,19 +708,23 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.flush()
             last = time.time()
             while True:
-                if q:
-                    msg = q.pop(0)
+                # block on the queue instead of a 0.15s poll loop: idle
+                # clients used to wake ~7x/s each; get(timeout) sleeps the
+                # thread until an event or the next keepalive is due
+                try:
+                    msg = q.get(timeout=5)
                     data = json.dumps(msg, ensure_ascii=False).encode('utf-8')
                     self.wfile.write(b'data: ' + data + b'\n\n')
                     self.wfile.flush()
                     last = time.time()
-                elif time.time() - last > 15:
+                    continue
+                except Empty:
+                    pass
+                if time.time() - last > 15:
                     self.wfile.write(b': ping\n\n')
                     self.wfile.flush()
                     last = time.time()
-                else:
-                    time.sleep(0.15)
-                if not HOST.alive() and not q:
+                if not HOST.alive():
                     self.wfile.write(b'data: {"event":"host_down"}\n\n')
                     self.wfile.flush()
                     break
