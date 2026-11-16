@@ -8,11 +8,11 @@
 #   1. frontend: upstream desktop + overlay -> webui/frontend/dist (build-webui.sh)
 #   2. image:    webui/docker/Dockerfile.webui (engine bundle + bridge + www)
 #   3. smoke:    hello over the bridge's /api/rpc + static UI + fs API
-#   4. dist/:    webui image tar.gz (fnOS docker load / compose), SHA256SUMS
+#   4. dist/:    webui image tar.gz (fnOS docker load / compose)
 #
 # Outputs (dist/):
-#   spektralab-fnos-webui-<version>.tar.gz
-#   SHA256SUMS.webui
+#   spektralab-fnos-<version>-docker-webui.tar.gz
+#   (SHA256SUMS is written by build.sh over both images + the host bundle)
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$here/.." && pwd)"
@@ -85,9 +85,10 @@ docker rm -f "$smoke_id" > /dev/null 2>&1 || true
 trap - EXIT
 
 # 4) artifacts
+# naming: spektralab-fnos-<version>-docker-webui.tar.gz (docker image; pairs
+# with build.sh's -docker-headless- so the two images sort together)
 mkdir -p "$dist"
-docker save "spektralab-fnos:$image_tag" | gzip > "$dist/spektralab-fnos-webui-$version.tar.gz"
-( cd "$dist" && sha256sum "spektralab-fnos-webui-$version.tar.gz" > SHA256SUMS.webui )
+docker save "spektralab-fnos:$image_tag" | gzip > "$dist/spektralab-fnos-$version-docker-webui.tar.gz"
+rm -f "$dist/SHA256SUMS.webui"
 echo "==> WebUI artifacts in $dist:"
-ls -la "$dist" | grep webui
-cat "$dist/SHA256SUMS.webui"
+ls -la "$dist" | grep docker-webui || true

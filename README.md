@@ -29,7 +29,7 @@
 ### 方式二：独立 Docker（无 fpk） / Option 2: plain Docker
 
 ```bash
-docker load -i dist/spektralab-fnos-webui-<version>.tar.gz
+docker load -i dist/spektralab-fnos-<version>-docker-webui.tar.gz
 docker run -d --name spektralab -p 8777:8080 \
   --device /dev/dri \
   -e SPEKTRALAB_PHOTOS_ROOTS=/photos \

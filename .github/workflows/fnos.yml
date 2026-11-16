@@ -1,7 +1,7 @@
 # Build the fnOS deliverables on a hosted runner:
 #   build.sh              -> engine host (debian:12, lavapipe CTest, glibc gate) + headless image
 #   webui/build-webui.sh  -> frontend (upstream desktop + overlay) + WebUI image + bridge smoke
-#   fpk job               -> SpektraLab-FnOS-{Tab,Window}-<version>-x86.fpk (fnpack in CI, pinned)
+#   fpk job               -> SpektraLab-FnOS-<version>-{window,tab}-x86.fpk (fnpack in CI, pinned)
 # Tag pushes (v*) attach everything to a GitHub Release.
 #
 # The two fpk variants share the appname and the data dir: install one over
@@ -49,7 +49,6 @@ jobs:
           path: |
             dist/spektralab-fnos-*.tar.gz
             dist/SHA256SUMS
-            dist/SHA256SUMS.webui
           if-no-files-found: error
           retention-days: 30
 
@@ -135,8 +134,10 @@ jobs:
           fnpack build
           VERSION="$(grep -E '^version[[:space:]]*=' manifest | head -1 | sed 's/.*=//;s/[[:space:]]//g')"
           [ -n "$VERSION" ] || { echo "ERROR: no version in manifest"; exit 1; }
-          VARIANT="$(echo '${{ matrix.variant }}' | sed 's/^\(.\)/\U\1/')"
-          OUT="SpektraLab-FnOS-${VARIANT}-${VERSION}-x86.fpk"
+          # naming: SpektraLab-FnOS-<version>-<variant>-x86.fpk -- version right
+          # after the project name, variant lowercase (window | tab)
+          VARIANT="${{ matrix.variant }}"
+          OUT="SpektraLab-FnOS-${VERSION}-${VARIANT}-x86.fpk"
           mv spektralab.fpk "$OUT"
           ls -lh "$OUT"
           echo "FPK_NAME=$OUT" >> "$GITHUB_ENV"
@@ -183,8 +184,9 @@ jobs:
         run: |
           set -euo pipefail
           ls -lh rel/
-          ( cd rel && sha256sum *.fpk *.tar.gz > SHA256SUMS )
-          N=$(ls rel/SpektraLab-FnOS-*.fpk rel/*.tar.gz rel/SHA256SUMS | wc -l)
-          [ "$N" -ge 6 ] || { echo "ERROR: expected >=6 files (2 fpk + 2 images + sums), found $N"; exit 1; }
+          # one checksum file for everything: the names are self-describing now
+          ( cd rel && sha256sum SpektraLab-FnOS-*.fpk spektralab-fnos-*.tar.gz > SHA256SUMS )
+          N=$(ls rel/SpektraLab-FnOS-*.fpk rel/spektralab-fnos-*.tar.gz rel/SHA256SUMS | wc -l)
+          [ "$N" -ge 6 ] || { echo "ERROR: expected >=6 files (2 fpk + 2 images + host bundle + sums), found $N"; exit 1; }
           gh release upload "${{ github.ref_name }}" rel/* --clobber
           echo "attached to release ${{ github.ref_name }}"
