@@ -184,11 +184,12 @@ jobs:
         run: |
           set -euo pipefail
           ls -lh rel/
-          # one checksum file for everything: the names are self-describing now.
-          # no bare host bundle on the release: fnOS users use the fpk / webui
-          # image; the host bundle travels inside the fpk payload
-          ( cd rel && sha256sum SpektraLab-FnOS-*.fpk spektralab-fnos-*.tar.gz > SHA256SUMS )
-          N=$(ls rel/SpektraLab-FnOS-*.fpk rel/spektralab-fnos-*.tar.gz rel/SHA256SUMS | wc -l)
+          # fnOS release ships: 2 fpk + the webui docker image + one sums file.
+          # The headless image and the bare host bundle stay out of the release
+          # (they travel in the CI artifacts for debug builds only).
+          rm -f rel/spektralab-fnos-*-docker-headless.tar.gz
+          ( cd rel && sha256sum SpektraLab-FnOS-*.fpk spektralab-fnos-*-docker-webui.tar.gz > SHA256SUMS )
+          N=$(ls rel/SpektraLab-FnOS-*.fpk rel/spektralab-fnos-*-docker-webui.tar.gz rel/SHA256SUMS | wc -l)
           [ "$N" -ge 4 ] || { echo "ERROR: expected >=4 files (2 fpk + 1 image + sums), found $N"; exit 1; }
           gh release upload "${{ github.ref_name }}" rel/* --clobber
           # gate: the release body must carry a Full Changelog link (compare
