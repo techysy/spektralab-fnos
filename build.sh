@@ -48,6 +48,46 @@ if [ -f deps-seed/LibRaw-0.22.2.zip ] && [ ! -f upstream/build/deps/LibRaw-0.22.
   echo "==> seeded LibRaw 0.22.2 archive from deps-seed/"
 fi
 
+# 2.5) upstream 2.4.x Linux link regression (patched on the HOST side, before
+# the container mounts this checkout): pipeline.cpp's node_edr calls
+# Pipeline::overscan_params_block, defined in overscan.cpp -- compiled only in
+# the APPLE branch of the spektralab_pipeline target. The non-Apple engine
+# stops linking (undefined reference). Overscan is refused on this path
+# (set_overscan_frame fails, overscan_.valid stays false), so node_edr never
+# reaches the call: a symbol-only stub keeps the linker happy. Idempotent;
+# auto-skips once upstream compiles overscan.cpp off macOS too.
+win_cpp="upstream/engine/src/pipeline/windows_unported.cpp"
+# NOTE: overscan.cpp carries the definition but is NOT compiled into the
+# non-Apple target (it is inside the if(APPLE) branch), so only the caller
+# (pipeline.cpp) and the stub file (windows_unported.cpp) are inspected.
+if [ -f "upstream/engine/src/pipeline/pipeline.cpp" ] \
+   && grep -q 'overscan_params_block' "upstream/engine/src/pipeline/pipeline.cpp" \
+   && ! grep -q 'void Pipeline::overscan_params_block' "upstream/engine/src/pipeline/windows_unported.cpp"; then
+  # insert BEFORE the closing "}  // namespace spk" so the stub lands inside
+  # both the namespace and the #ifndef __APPLE__ guard (a cat >> lands past
+  # the #endif and does not compile)
+  awk 'BEGIN {
+    stub = ""
+    stub = stub "// dsh-fnos style local patch (2026-11-19): 2.4.x upstream Linux link\n"
+    stub = stub "// regression -- node_edr (pipeline.cpp) references\n"
+    stub = stub "// Pipeline::overscan_params_block, defined in overscan.cpp, which the\n"
+    stub = stub "// spektralab_pipeline target compiles only on APPLE. Overscan is refused\n"
+    stub = stub "// on the non-Apple path (set_overscan_frame fails, overscan_.valid stays\n"
+    stub = stub "// false), so node_edr never reaches the call; the stub exists for the\n"
+    stub = stub "// linker. Drop once upstream compiles overscan.cpp off macOS too.\n"
+    stub = stub "void Pipeline::overscan_params_block(std::vector<float>& P) const {\n"
+    stub = stub "    P.clear();\n"
+    stub = stub "}\n"
+  }
+  !inserted && /^}  \/\/ namespace spk/ { printf "%s", stub; inserted = 1 }
+  { print }
+  END { if (!inserted) exit 3 }
+  ' "$win_cpp" > "$win_cpp.new" \
+    && mv "$win_cpp.new" "$win_cpp" \
+    && echo "overscan_params_block stub inserted into windows_unported.cpp" \
+    || { rm -f "$win_cpp.new"; echo "FAIL: stub insert point (}  // namespace spk) not found" >&2; exit 1; }
+fi
+
 # 3) build + test in debian:12
 if [ "${1:-}" != "--skip-build" ]; then
   docker run --rm -v "$here/upstream":/src -w /src debian:12 bash -c "
@@ -60,31 +100,6 @@ if [ "${1:-}" != "--skip-build" ]; then
     # Upstream blobs carry CRLF (committed from Windows): on Linux, bash
     # reads them as 'pipefail\r'. Normalize every script before running.
     find engine -name '*.sh' -exec sed -i 's/\r\$//' {} +
-    # Upstream 2.4.x Linux link regression: pipeline.cpp's node_edr calls
-    # Pipeline::overscan_params_block, defined in overscan.cpp -- compiled
-    # only in the APPLE branch of the spektralab_pipeline target. The
-    # non-Apple engine stops linking (undefined reference). Overscan is
-    # refused on this path (set_overscan_frame fails, overscan_.valid stays
-    # false), so node_edr never reaches the call: a symbol-only stub keeps
-    # the linker happy. Idempotent; auto-skips once upstream fixes it.
-    if grep -q 'overscan_params_block' engine/src/pipeline/pipeline.cpp \\
-       && ! grep -q 'void Pipeline::overscan_params_block' engine/src/pipeline/windows_unported.cpp \\
-       && ! grep -q 'void Pipeline::overscan_params_block' engine/src/pipeline/overscan.cpp; then
-      cat >> engine/src/pipeline/windows_unported.cpp <<'STUB'
-
-// dsh-fnos style local patch (2026-11-19): 2.4.x upstream Linux link
-// regression -- node_edr (pipeline.cpp) references
-// Pipeline::overscan_params_block, defined in overscan.cpp, which the
-// spektralab_pipeline target compiles only on APPLE. Overscan is refused on
-// the non-Apple path (set_overscan_frame fails, overscan_.valid stays
-// false), so node_edr never reaches the call; the stub exists for the
-// linker. Drop once upstream compiles overscan.cpp off macOS too.
-void Pipeline::overscan_params_block(std::vector<float>& P) const {
-    P.clear();
-}
-STUB
-      echo "overscan_params_block stub appended to windows_unported.cpp"
-    fi
     bash engine/build-linux.sh --test
     # glibc gate: fnOS is Debian 12 (glibc 2.36); refuse anything higher.
     max=\$(readelf -V build/host-linux-x64/spektralab-host \
