@@ -1,5 +1,5 @@
 appname=spektralab
-version=0.3.0
+version=0.3.1
 display_name=SpektraLab
 desc=【原生版】胶片暗房引擎：按物理过程建模的胶片模拟与放大印相。打开 RAW 照片，选择胶片与相纸，调参后导出 TIFF/JPEG。基于 SpektraLab 引擎（GPL-3.0）。
 maintainer=techysy
@@ -13,4 +13,4 @@ service_port=8777
 checkport=false
 desktop_uidir=ui
 desktop_applaunchname=spektralab.main
-changelog=首个 WebUI 版本：统一网关接入、授权目录照片浏览、核显透传加速。
+changelog=升级上游 SpektraLab 2.4.2：蒙版图层、多重曝光、镜头校正、编辑历史、变体、水印、电影画幅、漏光、LibRaw 可选解码器等（上游 2.4.0/2.4.1/2.4.2 三版变更）。
