@@ -60,6 +60,31 @@ if [ "${1:-}" != "--skip-build" ]; then
     # Upstream blobs carry CRLF (committed from Windows): on Linux, bash
     # reads them as 'pipefail\r'. Normalize every script before running.
     find engine -name '*.sh' -exec sed -i 's/\r\$//' {} +
+    # Upstream 2.4.x Linux link regression: pipeline.cpp's node_edr calls
+    # Pipeline::overscan_params_block, defined in overscan.cpp -- compiled
+    # only in the APPLE branch of the spektralab_pipeline target. The
+    # non-Apple engine stops linking (undefined reference). Overscan is
+    # refused on this path (set_overscan_frame fails, overscan_.valid stays
+    # false), so node_edr never reaches the call: a symbol-only stub keeps
+    # the linker happy. Idempotent; auto-skips once upstream fixes it.
+    if grep -q 'overscan_params_block' engine/src/pipeline/pipeline.cpp \\
+       && ! grep -q 'void Pipeline::overscan_params_block' engine/src/pipeline/windows_unported.cpp \\
+       && ! grep -q 'void Pipeline::overscan_params_block' engine/src/pipeline/overscan.cpp; then
+      cat >> engine/src/pipeline/windows_unported.cpp <<'STUB'
+
+// dsh-fnos style local patch (2026-11-19): 2.4.x upstream Linux link
+// regression -- node_edr (pipeline.cpp) references
+// Pipeline::overscan_params_block, defined in overscan.cpp, which the
+// spektralab_pipeline target compiles only on APPLE. Overscan is refused on
+// the non-Apple path (set_overscan_frame fails, overscan_.valid stays
+// false), so node_edr never reaches the call; the stub exists for the
+// linker. Drop once upstream compiles overscan.cpp off macOS too.
+void Pipeline::overscan_params_block(std::vector<float>& P) const {
+    P.clear();
+}
+STUB
+      echo "overscan_params_block stub appended to windows_unported.cpp"
+    fi
     bash engine/build-linux.sh --test
     # glibc gate: fnOS is Debian 12 (glibc 2.36); refuse anything higher.
     max=\$(readelf -V build/host-linux-x64/spektralab-host \
